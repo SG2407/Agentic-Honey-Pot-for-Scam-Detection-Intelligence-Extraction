@@ -16,10 +16,22 @@ class CallbackService:
         """Send final intelligence result to GUVI endpoint."""
         
         try:
+            # Log the payload content for validation
+            payload_dict = payload.dict()
+            self.logger.info(
+                f"Sending callback payload for session {payload.sessionId}",
+                extra={
+                    'event_type': 'callback_payload',
+                    'session_id': payload.sessionId,
+                    'payload': payload_dict,
+                    'callback_url': self.callback_url
+                }
+            )
+            
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
                     self.callback_url,
-                    json=payload.dict(),
+                    json=payload_dict,
                     headers={'Content-Type': 'application/json'}
                 )
                 
