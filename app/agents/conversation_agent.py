@@ -168,6 +168,35 @@ class ConversationAgent:
         
         return response
     
+    def _get_system_prompt(self, scam_type: str = None) -> str:
+        """Get system prompt for AI persona."""
+        base_prompt = """
+You are roleplaying as a potential scam victim. Your goal is to engage with the scammer to extract information while appearing vulnerable and believable.
+
+Persona guidelines:
+- Act confused, worried, or excited depending on the scam type
+- Ask clarifying questions to get more details
+- Show some hesitation but remain engaged
+- Use simple, non-technical language
+- Occasionally express concerns or ask for verification
+- Keep responses short (1-2 sentences max)
+
+DO NOT:
+- Immediately agree to provide sensitive information
+- Sound too knowledgeable about scams
+- Be overly suspicious right away
+- Use technical jargon
+"""
+        
+        if scam_type == 'financial_threat':
+            return base_prompt + "\nScenario: Someone claims your bank account has issues. Act worried and confused about what to do."
+        elif scam_type == 'prize_scam':
+            return base_prompt + "\nScenario: Someone says you won a prize. Act excited but ask for details about how to claim it."
+        elif scam_type == 'payment_fraud':
+            return base_prompt + "\nScenario: Someone mentions failed payments or refunds. Act confused about transactions."
+        else:
+            return base_prompt + "\nScenario: Respond appropriately to the conversation context. Show mild confusion and ask for clarification."
+    
     def _build_conversation_context(self, conversation_state: ConversationState) -> str:
         """Build context string for AI."""
         context = "Conversation history:\n"

@@ -78,32 +78,53 @@ class ScamDetector:
             'claim': 0.3,
             'customer care': 0.4
         }
+            ],
+            'reward_bait': [
+                r'congratulations',
+                r'winner',
+                r'prize',
+                r'reward',
+                r'cashback',
+                r'free (?:gift|money)',
+                r'lottery'
+            ]
+        }
+        
+        # Scam keywords with weights
+        self.scam_keywords = {
+            'verify': 0.3, 'urgent': 0.4, 'blocked': 0.5, 'suspended': 0.5,
+            'otp': 0.6, 'pin': 0.6, 'account': 0.2, 'bank': 0.3,
+            'upi': 0.4, 'transaction': 0.3, 'failed': 0.3,
+            'unauthorized': 0.4, 'suspicious': 0.4, 'fraud': 0.5,
+            'security': 0.3, 'customer care': 0.3, 'prize': 0.4,
+            'winner': 0.4, 'congratulations': 0.3, 'free': 0.3
+        }
     
     async def analyze_message(self, message: Message, conversation_history: List[Message] = None, session_id: str = None) -> ScamDetectionResult:
-        """Analyze message for scam indicators using hybrid approach."""
+        """Analyze a message for scam indicators."""
         
         # Pattern-based detection
         pattern_score = self._pattern_based_detection(message.text)
         
-        # AI-based detection (if available)
-        ai_result = await self._ai_based_detection(message, conversation_history)
-        ai_score = ai_result.get('score', 0.0)
+        # AI-based detection if available
+        ai_score = 0.0
+        ai_reasoning = ""
+        if self.client:
+            ai_result = await self._ai_based_detection(message, conversation_history)
+            ai_score = ai_result['score']
+            ai_reasoning = ai_result['reasoning']
         
-        # Combine scores (give more weight to AI if available)
-        if ai_score > 0:
-            combined_score = (pattern_score * 0.4) + (ai_score * 0.6)
-        else:
-            combined_score = pattern_score
+        # Combine scores
+        combined_score = (pattern_score * 0.6) + (ai_score * 0.4)
+        is_scam = combined_score >= settings.SCAM_CONFIDENCE_THRESHOLD
         
-        # Determine if it's a scam
-        threshold = getattr(settings, 'SCAM_CONFIDENCE_THRESHOLD', 0.4)
-        is_scam = combined_score >= threshold
-        
-        # Classify scam type
+        # Determine scam type
         scam_type = self._classify_scam_type(message.text) if is_scam else None
         
-        # Get reasoning from AI or generate from patterns
-        reasoning = ai_result.get('reasoning', f'Pattern analysis confidence: {pattern_score:.2f}')
+        # Create reasoning
+        reasoning = f"Pattern analysis: {pattern_score:.2f}, AI analysis: {ai_score:.2f}. "
+        if ai_reasoning:
+            reasoning += ai_reasoning
         
         result = ScamDetectionResult(
             is_scam=is_scam,
@@ -206,7 +227,7 @@ Respond with a JSON object containing:
                 }
             except json.JSONDecodeError:
                 # Fallback: simple confidence extraction
-                confidence = 0.7 if 'scam' in ai_response.lower() else 0.3
+                confidence = 0.5 if 'scam' in ai_response.lower() else 0.2
                 return {
                     'score': confidence,
                     'reasoning': ai_response[:200],
