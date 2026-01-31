@@ -1,0 +1,226 @@
+import re
+from typing import List, Dict, Any
+from app.models import ScamDetectionResult, Message
+from app.utils.logger import setup_logger, log_scam_detection
+from config.settings import settings
+from groq import Groq
+
+class ScamDetector:
+    """Advanced scam detection using AI and pattern matching."""
+    
+    def __init__(self):
+        self.logger = setup_logger(__name__)
+        self.client = Groq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
+        
+        # Common scam patterns
+        self.scam_patterns = {
+            'urgency': [
+                r'urgent(?:ly)?',
+                r'immediate(?:ly)?',
+                r'act now',
+                r'expires today',
+                r'limited time',
+                r'hurry',
+                r'asap'
+            ],
+            'financial_threat': [
+                r'account (?:will be )?(?:blocked|suspended|closed)',
+                r'bank account',
+                r'credit card',
+                r'transaction',
+                r'payment failed',
+                r'verify (?:your )?account',
+                r'unauthorized',
+                r'suspicious activity'
+            ],
+            'credential_request': [
+                r'(?:share|send|provide) (?:your )?(?:otp|pin|password)',
+                r'upi (?:id|pin)',
+                r'account (?:number|details)',
+                r'cvv',
+                r'expiry date',
+                r'verification code'
+            ],
+            'impersonation': [
+                r'(?:from )?(?:bank|sbi|hdfc|icici|axis)',
+                r'customer (?:care|service)',
+                r'security team',
+                r'fraud (?:detection|prevention)',
+                r'rbi',
+                r'government'
+            ],
+            'reward_bait': [
+                r'congratulations',
+                r'winner',
+                r'prize',
+                r'reward',
+                r'cashback',
+                r'free (?:gift|money)',
+                r'lottery'
+            ]
+        }
+        
+        # Scam keywords with weights
+        self.scam_keywords = {
+            'verify': 0.3, 'urgent': 0.4, 'blocked': 0.5, 'suspended': 0.5,
+            'otp': 0.6, 'pin': 0.6, 'account': 0.2, 'bank': 0.3,
+            'upi': 0.4, 'transaction': 0.3, 'failed': 0.3,
+            'unauthorized': 0.4, 'suspicious': 0.4, 'fraud': 0.5,
+            'security': 0.3, 'customer care': 0.3, 'prize': 0.4,
+            'winner': 0.4, 'congratulations': 0.3, 'free': 0.3
+        }
+    
+    async def analyze_message(self, message: Message, conversation_history: List[Message] = None, session_id: str = None) -> ScamDetectionResult:
+        """Analyze a message for scam indicators."""
+        
+        # Pattern-based detection
+        pattern_score = self._pattern_based_detection(message.text)
+        
+        # AI-based detection if available
+        ai_score = 0.0
+        ai_reasoning = ""
+        if self.client:
+            ai_result = await self._ai_based_detection(message, conversation_history)
+            ai_score = ai_result['score']
+            ai_reasoning = ai_result['reasoning']
+        
+        # Combine scores
+        combined_score = (pattern_score * 0.6) + (ai_score * 0.4)
+        is_scam = combined_score >= settings.SCAM_CONFIDENCE_THRESHOLD
+        
+        # Determine scam type
+        scam_type = self._classify_scam_type(message.text) if is_scam else None
+        
+        # Create reasoning
+        reasoning = f"Pattern analysis: {pattern_score:.2f}, AI analysis: {ai_score:.2f}. "
+        if ai_reasoning:
+            reasoning += ai_reasoning
+        
+        result = ScamDetectionResult(
+            is_scam=is_scam,
+            confidence=combined_score,
+            scam_type=scam_type,
+            reasoning=reasoning
+        )
+        
+        # Log result
+        if session_id:
+            log_scam_detection(self.logger, session_id, is_scam, combined_score, scam_type)
+        
+        return result
+    
+    def _pattern_based_detection(self, text: str) -> float:
+        """Detect scam patterns using regex matching."""
+        text_lower = text.lower()
+        total_score = 0.0
+        matches = 0
+        
+        # Check scam patterns
+        for category, patterns in self.scam_patterns.items():
+            category_matches = 0
+            for pattern in patterns:
+                if re.search(pattern, text_lower, re.IGNORECASE):
+                    category_matches += 1
+            
+            if category_matches > 0:
+                # Weight different categories
+                category_weights = {
+                    'urgency': 0.2,
+                    'financial_threat': 0.3,
+                    'credential_request': 0.4,
+                    'impersonation': 0.25,
+                    'reward_bait': 0.15
+                }
+                total_score += category_weights.get(category, 0.2) * min(category_matches / len(patterns), 1.0)
+                matches += 1
+        
+        # Check individual keywords
+        for keyword, weight in self.scam_keywords.items():
+            if keyword in text_lower:
+                total_score += weight * 0.1  # Reduced weight for individual keywords
+        
+        return min(total_score, 1.0)
+    
+    async def _ai_based_detection(self, message: Message, conversation_history: List[Message] = None) -> Dict[str, Any]:
+        """Use AI to analyze message for scam indicators."""
+        if not self.client:
+            return {'score': 0.0, 'reasoning': 'AI analysis not available'}
+        
+        try:
+            # Prepare context
+            context = f"Message: {message.text}\n"
+            if conversation_history:
+                context += "Conversation history:\n"
+                for msg in conversation_history[-3:]:  # Last 3 messages for context
+                    context += f"{msg.sender}: {msg.text}\n"
+            
+            system_prompt = """
+You are an expert scam detection system. Analyze the given message and conversation context to determine if this is likely a scam.
+
+Common scam indicators:
+- Urgency tactics ("act now", "urgent", "expires today")
+- Financial threats ("account blocked", "suspicious activity")
+- Credential requests (asking for OTP, PIN, passwords, UPI ID)
+- Impersonation (claiming to be from banks, government)
+- Too-good-to-be-true offers (prizes, rewards, free money)
+- Poor grammar or spelling
+- Generic greetings without personalization
+
+Respond with a JSON object containing:
+- "is_scam": boolean
+- "confidence": float between 0.0 and 1.0
+- "reasoning": string explaining your analysis
+- "scam_type": string or null (e.g., "phishing", "financial_fraud", "prize_scam")
+"""
+            
+            response = self.client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": context}
+                ],
+                max_tokens=300,
+                temperature=0.1
+            )
+            
+            # Parse AI response
+            ai_response = response.choices[0].message.content
+            
+            # Try to extract structured response
+            try:
+                import json
+                ai_data = json.loads(ai_response)
+                return {
+                    'score': ai_data.get('confidence', 0.0),
+                    'reasoning': ai_data.get('reasoning', 'AI analysis completed'),
+                    'scam_type': ai_data.get('scam_type')
+                }
+            except json.JSONDecodeError:
+                # Fallback: simple confidence extraction
+                confidence = 0.5 if 'scam' in ai_response.lower() else 0.2
+                return {
+                    'score': confidence,
+                    'reasoning': ai_response[:200],
+                    'scam_type': None
+                }
+                
+        except Exception as e:
+            self.logger.error(f"AI analysis failed: {str(e)}")
+            return {'score': 0.0, 'reasoning': f'AI analysis error: {str(e)}'}
+    
+    def _classify_scam_type(self, text: str) -> str:
+        """Classify the type of scam based on content."""
+        text_lower = text.lower()
+        
+        if any(word in text_lower for word in ['otp', 'pin', 'password', 'verify']):
+            return 'credential_phishing'
+        elif any(word in text_lower for word in ['account blocked', 'suspended', 'unauthorized']):
+            return 'financial_threat'
+        elif any(word in text_lower for word in ['prize', 'winner', 'congratulations', 'lottery']):
+            return 'prize_scam'
+        elif any(word in text_lower for word in ['upi', 'payment', 'transaction']):
+            return 'payment_fraud'
+        elif any(word in text_lower for word in ['bank', 'customer care', 'security team']):
+            return 'impersonation'
+        else:
+            return 'general_scam'
