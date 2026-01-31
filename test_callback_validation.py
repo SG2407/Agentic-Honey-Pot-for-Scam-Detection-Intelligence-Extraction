@@ -37,11 +37,50 @@ class ComprehensiveHoneypotTest:
         
         # Comprehensive scam conversation scenario - Banking + UPI fraud combination
         scam_messages = [
-           "Hey, are we still meeting tomorrow for the project discussion?",
-    
-    "I might be 10 minutes late, traffic looks bad near Wakad.",
-    
-    "No worries, let me know when you reach. I’ll grab coffee meanwhile."
+           # ─────────────────────────────
+    # Phase 1: Initial Threat
+    # ─────────────────────────────
+    "🚨 URGENT: Your SBI bank account has been temporarily blocked due to suspicious transactions detected from your UPI ID. Immediate verification required to prevent permanent closure.",
+
+    "Sir/Madam, this is from SBI Security Team. Your account shows unauthorized transactions of ₹25,000. Please respond immediately or your account will be permanently blocked within 2 hours.",
+
+
+    # ─────────────────────────────
+    # Phase 2: Credential Harvesting
+    # ─────────────────────────────
+    "To verify your identity and unblock your account, please share your UPI PIN and the last 4 digits of your debit card. This is for security verification only.",
+
+    "We have sent an OTP to your registered mobile number ending with **7890. Please share the 6-digit OTP code to complete the verification process immediately.",
+
+    "Sir, also provide your internet banking password for cross-verification. Our system needs to validate all credentials to ensure account security.",
+
+
+    # ─────────────────────────────
+    # Phase 3: Urgency Escalation
+    # ─────────────────────────────
+    "⚠️ WARNING: Only 45 minutes left before permanent account closure. Our fraud detection system has flagged multiple suspicious activities. Act NOW!",
+
+    "This is your final notice. If verification is not completed in the next 30 minutes, all your funds will be frozen as per RBI guidelines. Don't delay!",
+
+
+    # ─────────────────────────────
+    # Phase 4: Contact & Redirection
+    # ─────────────────────────────
+    "For immediate assistance, call our emergency helpline at +91-9876543210 and speak to Manager Mr. Raj Kumar (Employee ID: SBI2024789).",
+
+    "You can also visit our secure verification portal: https://sbi-security-verify.fake-domain.com/urgent-verification to complete the process online.",
+
+    "Alternatively, send an SMS in the format 'VERIFY <UPI PIN> <CARD CVV>' to our official number 567890 for instant account restoration.",
+
+
+    # ─────────────────────────────
+    # Phase 5: Prize Bait & Data Collection
+    # ─────────────────────────────
+    "Good news! As compensation for this inconvenience, you have been automatically enrolled in our premium customer lottery. You've won ₹50,000 cashback!",
+
+    "To claim your cashback reward and complete account verification, please provide: "
+    "1) UPI ID  2) Bank account number  3) Phone number  4) Email ID. "
+    "Customer care: support@sbi-rewards.fake-site.org"
         ]
         
         print(f"\n🎭 Starting conversation simulation with {len(scam_messages)} messages...")
