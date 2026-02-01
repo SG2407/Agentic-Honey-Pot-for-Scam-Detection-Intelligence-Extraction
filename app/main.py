@@ -54,9 +54,19 @@ app = FastAPI(
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests"""
+    """Log all incoming requests with raw body"""
     logger.info(f"📥 {request.method} {request.url.path} from {request.client.host}")
     logger.info(f"   Headers: {dict(request.headers)}")
+    
+    # Log raw request body for debugging GUVI format issues
+    if request.method == "POST":
+        body = await request.body()
+        logger.info(f"🔍 Raw Request Body: {body.decode('utf-8')}")
+        # Important: Store body for later use since it can only be read once
+        async def receive():
+            return {"type": "http.request", "body": body}
+        request._receive = receive
+    
     response = await call_next(request)
     return response
 

@@ -1,15 +1,17 @@
 """Pydantic models for request/response validation with timezone-aware timestamp handling"""
 
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Dict, Any, Union
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 class Message(BaseModel):
     """Message model with flexible timestamp parsing (Unix ms, ISO-8601, datetime)"""
+    model_config = ConfigDict(extra='ignore')  # Ignore unknown fields from GUVI
+    
     sender: str = Field(..., pattern="^(scammer|user)$")  # Only 'scammer' or 'user' allowed
     text: str
-    timestamp: datetime
+    timestamp: Union[str, int, datetime]  # Accept str | int before validation
     
     @field_validator('timestamp', mode='before')
     @classmethod
@@ -35,6 +37,8 @@ class Message(BaseModel):
 
 class Metadata(BaseModel):
     """Metadata about the message"""
+    model_config = ConfigDict(extra='ignore')  # Ignore unknown fields from GUVI
+    
     channel: str
     language: str
     locale: str
@@ -42,10 +46,12 @@ class Metadata(BaseModel):
 
 class HoneypotRequest(BaseModel):
     """Incoming request from GUVI"""
+    model_config = ConfigDict(extra='ignore')  # Ignore unknown fields from GUVI
+    
     sessionId: str
     message: Message
-    conversationHistory: List[Message] = Field(default_factory=list)
-    metadata: Metadata
+    conversationHistory: List[Message] = []  # Optional with default []
+    metadata: Optional[Metadata] = None  # Optional
 
 
 class HoneypotResponse(BaseModel):
