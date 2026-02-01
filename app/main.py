@@ -66,7 +66,7 @@ callback_sent_sessions: set = set()
 last_message_time: Dict[str, datetime] = {}
 
 # Timeout duration: if no message for X seconds after scam detected, send callback
-MESSAGE_TIMEOUT_SECONDS = 30
+MESSAGE_TIMEOUT_SECONDS = 10  # 10 seconds instead of 30 for faster callback
 
 def has_extracted_intelligence(conversation_state: ConversationState) -> bool:
     """Check if we have extracted any meaningful intelligence."""

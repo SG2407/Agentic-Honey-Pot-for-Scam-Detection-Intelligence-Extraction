@@ -28,7 +28,15 @@ class CallbackService:
                 }
             )
             
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            # Configure timeout with granular control
+            timeout = httpx.Timeout(
+                connect=5.0,
+                read=10.0,
+                write=5.0,
+                pool=5.0
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     self.callback_url,
                     json=payload_dict,
