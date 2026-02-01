@@ -129,7 +129,7 @@ async def honeypot_endpoint(
             logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
             return JSONResponse(
                 status_code=410,
-                content={"error": "Session closed. Callback already sent."}
+                content={"status": "success", "message": "Session closed"}
             )
         
         # ====================================================================
@@ -229,7 +229,7 @@ async def honeypot_endpoint(
             # Return 410 Gone (session closed)
             return JSONResponse(
                 status_code=410,
-                content={"message": "Session closed. Final result sent to GUVI."}
+                content={"status": "success", "message": "Session closed"}
             )
         
         # ====================================================================

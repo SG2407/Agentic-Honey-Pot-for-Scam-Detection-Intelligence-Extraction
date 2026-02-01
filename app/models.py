@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 class Message(BaseModel):
     """Message model with flexible timestamp parsing (Unix ms, ISO-8601, datetime)"""
-    sender: str
+    sender: str = Field(..., pattern="^(scammer|user)$")  # Only 'scammer' or 'user' allowed
     text: str
     timestamp: datetime
     
