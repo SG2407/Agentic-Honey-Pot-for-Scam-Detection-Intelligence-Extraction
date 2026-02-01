@@ -166,15 +166,16 @@ async def honeypot_endpoint(
         honeypot_request = HoneypotRequest(**body)
         session_id = honeypot_request.sessionId
         
-        # CRITICAL: Ignore all messages if callback already sent for this session
+        # CRITICAL: Reject all messages if callback already sent for this session
+        # Return 410 Gone to indicate session is permanently closed
         if session_id in callback_sent_sessions:
             logger.info(
-                f"⚠️ Ignoring message for session {session_id} - callback already sent",
-                extra={'session_id': session_id, 'action': 'ignored_after_callback'}
+                f"🚫 Rejecting message for session {session_id} - callback already sent, session closed",
+                extra={'session_id': session_id, 'action': 'session_closed'}
             )
-            return HoneypotResponse(
-                status="success",
-                reply="Message received. Thank you."
+            raise HTTPException(
+                status_code=410,
+                detail="Session closed - final result already submitted"
             )
         
     except HTTPException:
