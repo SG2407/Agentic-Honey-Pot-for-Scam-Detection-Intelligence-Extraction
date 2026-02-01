@@ -115,6 +115,19 @@ async def honeypot_endpoint(
     6. Generate reply (engage if scam, neutral if not)
     7. Return 200 OK with reply
     """
+    # ====================================================================
+    # DEBUG: Log request received at the very top (before any processing)
+    # ====================================================================
+    logger.info(f"\n{'🔴'*40}")
+    logger.info(f"🚨 RAW REQUEST RECEIVED - ENDPOINT REACHED")
+    logger.info(f"   Session ID: {request.sessionId}")
+    logger.info(f"   Sender: {request.message.sender}")
+    logger.info(f"   Message Text: {request.message.text}")
+    logger.info(f"   Timestamp: {request.message.timestamp}")
+    logger.info(f"   History Length: {len(request.conversationHistory)}")
+    logger.info(f"   Metadata: {request.metadata}")
+    logger.info(f"{'🔴'*40}\n")
+    
     session_id = request.sessionId
     current_time = datetime.now(timezone.utc)
     
@@ -137,6 +150,7 @@ async def honeypot_endpoint(
         # ====================================================================
         if session_id in callback_sent_sessions:
             logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
+            logger.warning(f"   ❌ RETURNING 410 GONE - Session was previously closed")
             return JSONResponse(
                 status_code=410,
                 content={"status": "success"}
@@ -163,6 +177,7 @@ async def honeypot_endpoint(
         # ====================================================================
         timeout_triggered = False
         if detection_result.is_scam and detection_result.confidence >= 0.7:
+            logger.info(f"✅ SCAM DETECTED - Timeout tracking ENABLED for this session")
             # Check timeout for scam sessions
             if session_id in last_message_time:
                 time_since_last = (current_time - last_message_time[session_id]).total_seconds()
@@ -171,12 +186,17 @@ async def honeypot_endpoint(
                 if time_since_last > MESSAGE_TIMEOUT_SECONDS:
                     logger.info(f"⏰ TIMEOUT TRIGGERED ({MESSAGE_TIMEOUT_SECONDS}s exceeded for scam session)")
                     timeout_triggered = True
+                else:
+                    logger.info(f"✅ Within timeout window ({MESSAGE_TIMEOUT_SECONDS}s)")
+            else:
+                logger.info(f"✅ First scam message for this session - Starting timeout tracking")
             
             # Update last message time ONLY for scam sessions
             last_message_time[session_id] = current_time
         else:
             # Non-scam: Don't track time, no timeout logic applies
-            logger.info("💬 Non-scam message: No timeout tracking, session stays open")
+            logger.info("💬 Non-scam message: No timeout tracking, session stays OPEN indefinitely")
+            logger.info("   ⏸️  Session will NOT be closed - waiting for more messages")
         
         # ====================================================================
         # STEP 4: Extract intelligence from ALL messages
@@ -198,18 +218,24 @@ async def honeypot_endpoint(
         
         # Only send callback if scam is confirmed (confidence >= 0.7)
         if detection_result.is_scam and detection_result.confidence >= 0.7:
+            logger.info("🔍 Evaluating callback conditions (scam confirmed)...")
             if has_real_intel:
                 should_send_callback = True
                 callback_reason = "Scam confirmed + Real intelligence extracted"
             elif timeout_triggered:
                 should_send_callback = True
                 callback_reason = f"Scam confirmed + Timeout ({MESSAGE_TIMEOUT_SECONDS}s) reached"
+            else:
+                logger.info("   ⏸️  No callback yet - waiting for intel or timeout")
+        else:
+            logger.info("❌ Non-scam - NO callback will be sent, session stays open")
         
         # ====================================================================
         # STEP 6: Send callback if triggered
         # ====================================================================
         if should_send_callback:
             logger.info(f"📤 CALLBACK TRIGGERED: {callback_reason}")
+            logger.info(f"   🔒 Marking session {session_id} as CLOSED")
             
             # Use actual tracked message count
             # This is the count BEFORE we send the reply (if we were to send one)
@@ -227,6 +253,7 @@ async def honeypot_endpoint(
             
             # Mark session as closed BEFORE sending (prevent race conditions)
             callback_sent_sessions.add(session_id)
+            logger.info(f"   ✅ Session {session_id} added to closed sessions set")
             
             # Send callback
             callback_success = await CallbackService.send_final_result(callback_payload)
@@ -237,6 +264,7 @@ async def honeypot_endpoint(
                 logger.error(f"❌ Callback failed for session {session_id}")
             
             # Return 410 Gone (session closed)
+            logger.info(f"   🚪 RETURNING 410 GONE - Session officially closed after callback")
             return JSONResponse(
                 status_code=410,
                 content={"status": "success"}
