@@ -59,6 +59,15 @@ callback_service = CallbackService()
 # In-memory storage for conversation states (in production, use Redis/Database)
 conversation_store: Dict[str, ConversationState] = {}
 
+# Track sessions that already sent callback (ONE callback per session)
+callback_sent_sessions: set = set()
+
+# Track last message time for timeout mechanism
+last_message_time: Dict[str, datetime] = {}
+
+# Timeout duration: if no message for X seconds after scam detected, send callback
+MESSAGE_TIMEOUT_SECONDS = 30
+
 def has_extracted_intelligence(conversation_state: ConversationState) -> bool:
     """Check if we have extracted any meaningful intelligence."""
     intelligence = intelligence_extractor.extract_from_conversation(
@@ -172,6 +181,17 @@ async def honeypot_endpoint(
         request = HoneypotRequest(**request_body)
         session_id = request.sessionId
         
+        # CRITICAL: Ignore all messages if callback already sent for this session
+        if session_id in callback_sent_sessions:
+            logger.info(
+                f"⚠️ Ignoring message for session {session_id} - callback already sent",
+                extra={'session_id': session_id, 'action': 'ignored_after_callback'}
+            )
+            return HoneypotResponse(
+                status="success",
+                reply="Message received. Thank you."
+            )
+        
     except HTTPException:
         raise
     except Exception as e:
@@ -193,6 +213,10 @@ async def honeypot_endpoint(
             session_id,
             ConversationState(sessionId=session_id)
         )
+        
+        # Update last message time for timeout tracking
+        current_time = datetime.now(timezone.utc)
+        last_message_time[session_id] = current_time
         
         # Add message to conversation history
         conversation_state.add_message(request.message)
@@ -253,18 +277,32 @@ async def honeypot_endpoint(
         # Update conversation state
         conversation_store[session_id] = conversation_state
         
-        # Check if we should send callback:
-        # 1. Immediately if intelligence extracted (bank accounts, UPI IDs, etc.)
-        # 2. Or when conversation naturally ends (message limits, goodbye, etc.)
-        if (conversation_state.scam_detected and 
+        # CALLBACK TRIGGER CONDITIONS (STRICT - ONE CALLBACK PER SESSION):
+        # 1. Callback NOT already sent for this session
+        # 2. Scam detected and agent activated
+        # 3. EITHER:
+        #    a) Real intelligence extracted (bank accounts, UPI, phone numbers, links)
+        #    b) Timeout reached (no new message for MESSAGE_TIMEOUT_SECONDS)
+        
+        if (session_id not in callback_sent_sessions and
+            conversation_state.scam_detected and 
             conversation_state.agent_activated):
             
-            # Check if we have extracted meaningful intelligence
-            intel_extracted = has_extracted_intelligence(conversation_state)
-            conversation_should_end = not conversation_agent.should_continue_conversation(conversation_state)
+            # Check for REAL intelligence (not just suspicious keywords)
+            has_real_intel = has_extracted_intelligence(conversation_state)
             
-            if intel_extracted or conversation_should_end:
-                reason = "intelligence_extracted" if intel_extracted else "conversation_ended"
+            # Check if timeout reached
+            time_since_last = (datetime.now(timezone.utc) - conversation_state.updated_at).total_seconds()
+            timeout_reached = time_since_last >= MESSAGE_TIMEOUT_SECONDS
+            
+            # Send callback if we have intel OR timeout reached
+            should_send_callback = has_real_intel or timeout_reached
+            
+            if should_send_callback:
+                reason = "real_intelligence_extracted" if has_real_intel else "timeout_reached"
+                
+                # Mark this session as callback sent IMMEDIATELY to prevent duplicates
+                callback_sent_sessions.add(session_id)
                 
                 log_conversation_event(
                     logger,
@@ -273,12 +311,13 @@ async def honeypot_endpoint(
                     {
                         'total_messages': len(conversation_state.messages),
                         'reason': reason,
-                        'intel_extracted': intel_extracted,
-                        'should_end': conversation_should_end
+                        'has_real_intel': has_real_intel,
+                        'timeout_reached': timeout_reached,
+                        'time_since_last': time_since_last
                     }
                 )
                 
-                # Schedule background task to send callback with extracted intelligence
+                # Schedule background task to send callback
                 background_tasks.add_task(
                     send_final_callback,
                     session_id,
