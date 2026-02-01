@@ -372,10 +372,23 @@ def generate_agent_notes(conversation_state: ConversationState) -> str:
     
     # Add conversation duration info
     if conversation_state.messages:
-        start_time = conversation_state.messages[0].timestamp
-        end_time = conversation_state.messages[-1].timestamp
-        duration = end_time - start_time
-        notes.append(f"Conversation lasted {duration.total_seconds():.0f} seconds")
+        try:
+            start_time = conversation_state.messages[0].timestamp
+            end_time = conversation_state.messages[-1].timestamp
+            
+            # Ensure both are timezone-aware or both are naive
+            if start_time.tzinfo is None and end_time.tzinfo is not None:
+                from datetime import timezone
+                start_time = start_time.replace(tzinfo=timezone.utc)
+            elif start_time.tzinfo is not None and end_time.tzinfo is None:
+                from datetime import timezone
+                end_time = end_time.replace(tzinfo=timezone.utc)
+            
+            duration = end_time - start_time
+            notes.append(f"Conversation lasted {duration.total_seconds():.0f} seconds")
+        except Exception as e:
+            logger.warning(f"Could not calculate conversation duration: {e}")
+            notes.append(f"Conversation lasted {len(conversation_state.messages)} message exchanges")
     
     return ". ".join(notes) if notes else "Standard scam conversation pattern detected"
 
