@@ -4,13 +4,19 @@ from app.models import ScamDetectionResult, Message
 from app.utils.logger import setup_logger, log_scam_detection
 from config.settings import settings
 from groq import Groq
+import json
 
 class ScamDetector:
-    """Advanced scam detection using AI and pattern matching."""
+    """Advanced scam detection using Groq LLM with pattern-based fallback."""
     
     def __init__(self):
         self.logger = setup_logger(__name__)
         self.client = Groq(api_key=settings.GROQ_API_KEY) if settings.GROQ_API_KEY else None
+        
+        if self.client:
+            self.logger.info("✅ Groq LLM client initialized for scam detection")
+        else:
+            self.logger.warning("⚠️ Groq API key not found - using pattern-based fallback only")
         
         # Common scam patterns
         self.scam_patterns = {
@@ -79,44 +85,159 @@ class ScamDetector:
             'customer care': 0.4
         }
     
+    def _ml_based_detection(self, text: str) -> Dict[str, Any]:
+        """Use RoBERTa model for scam detection."""
+        try:
+            # Tokenize input
+            inputs = self.tokenizer(
+                text,
+                return_tensors="pt",
+                truncation=True,
+                max_length=512,
+                padding=True
+            )
+            
+            # Get model prediction
+            with torch.no_grad():
+                outputs = self.model(**inputs)
+                logits = outputs.logits
+                probabilities = torch.softmax(logits, dim=1)
+            
+            # Get prediction (0=ham/legitimate, 1=spam/scam)
+            spam_probability = probabilities[0][1].item()
+            ham_probability = probabilities[0][0].item()
+            
+            is_scam = spam_probability > 0.5
+            confidence = spam_probability if is_scam else ham_probability
+            
+            reasoning = f"RoBERTa ML model: {'SCAM' if is_scam else 'LEGITIMATE'} (spam_prob: {spam_probability:.3f}, ham_prob: {ham_probability:.3f})"
+            
+            return {
+                'is_scam': is_scam,
+                'confidence': confidence,
+                'reasoning': reasoning,
+                'spam_probability': spam_probability,
+                'ham_probability': ham_probability
+            }
+            
+        except Exception as e:
+            self.logger.error(f"ML detection failed: {str(e)}")
+            # Fallback to pattern-based
+            pattern_score = self._pattern_based_detection(text)
+            return {
+                'is_scam': pattern_score > 0.5,
+                'confidence': pattern_score,
+                'reasoning': f"ML model error, fallback pattern: {pattern_score:.2f}"
+            }
+    
     async def analyze_message(self, message: Message, conversation_history: List[Message] = None, session_id: str = None) -> ScamDetectionResult:
-        """Analyze message for scam indicators using hybrid approach."""
+        """Analyze message for scam indicators using Groq LLM with pattern-based fallback."""
         
-        # Pattern-based detection
-        pattern_score = self._pattern_based_detection(message.text)
-        
-        # AI-based detection (if available)
-        ai_result = await self._ai_based_detection(message, conversation_history)
-        ai_score = ai_result.get('score', 0.0)
-        
-        # Combine scores (give more weight to AI if available)
-        if ai_score > 0:
-            combined_score = (pattern_score * 0.4) + (ai_score * 0.6)
+        # Primary detection using Groq LLM
+        if self.client:
+            llm_result = await self._llm_based_detection(message.text)
+            is_scam = llm_result['is_scam']
+            confidence = llm_result['confidence']
+            reasoning = llm_result['reasoning']
+            scam_type = llm_result.get('scam_type')
         else:
-            combined_score = pattern_score
-        
-        # Determine if it's a scam
-        threshold = getattr(settings, 'SCAM_CONFIDENCE_THRESHOLD', 0.4)
-        is_scam = combined_score >= threshold
-        
-        # Classify scam type
-        scam_type = self._classify_scam_type(message.text) if is_scam else None
-        
-        # Get reasoning from AI or generate from patterns
-        reasoning = ai_result.get('reasoning', f'Pattern analysis confidence: {pattern_score:.2f}')
+            # Fallback to pattern-based if LLM not available
+            self.logger.warning("Groq LLM not available, using pattern-based fallback")
+            pattern_score = self._pattern_based_detection(message.text)
+            threshold = getattr(settings, 'SCAM_CONFIDENCE_THRESHOLD', 0.5)
+            is_scam = pattern_score >= threshold
+            confidence = pattern_score
+            reasoning = f"Pattern-based fallback: {pattern_score:.2f}"
+            scam_type = self._classify_scam_type(message.text) if is_scam else None
         
         result = ScamDetectionResult(
             is_scam=is_scam,
-            confidence=combined_score,
+            confidence=confidence,
             scam_type=scam_type,
             reasoning=reasoning
         )
         
         # Log result
         if session_id:
-            log_scam_detection(self.logger, session_id, is_scam, combined_score, scam_type)
+            log_scam_detection(self.logger, session_id, is_scam, confidence, scam_type)
         
         return result
+    
+    async def _llm_based_detection(self, text: str) -> Dict[str, Any]:
+        """Use Groq LLM for scam detection with Indian context awareness."""
+        try:
+            system_prompt = """You are an expert Indian scam detection system. Analyze messages for scam indicators specific to India.
+
+INDIAN SCAM PATTERNS TO DETECT:
+- UPI fraud (UPI ID, UPI PIN requests)
+- Banking fraud (SBI, HDFC, ICICI, Axis Bank impersonation)
+- OTP/verification code phishing
+- Account blocking threats
+- Prize/lottery scams (Rs/INR amounts)
+- Payment failure/refund scams
+- KYC verification scams
+- Aadhaar/PAN card requests
+- Customer care impersonation
+- Urgency tactics in Hindi/English
+
+SCAM TYPES:
+- credential_phishing: Asking for OTP, PIN, passwords, CVV
+- financial_threat: Account blocking, suspicious activity warnings
+- prize_scam: Lottery, cashback, rewards
+- payment_fraud: UPI payment failures, refund requests
+- impersonation: Bank, government, customer care
+- general_scam: Other scam patterns
+
+Respond ONLY with valid JSON:
+{
+  "is_scam": true/false,
+  "confidence": 0.0-1.0,
+  "scam_type": "credential_phishing" or null,
+  "reasoning": "Brief explanation"
+}"""
+            
+            response = self.client.chat.completions.create(
+                model=settings.GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Analyze this message:\n\n{text}"}
+                ],
+                max_tokens=200,
+                temperature=0.1
+            )
+            
+            llm_response = response.choices[0].message.content.strip()
+            
+            # Parse JSON response
+            try:
+                result = json.loads(llm_response)
+                return {
+                    'is_scam': result.get('is_scam', False),
+                    'confidence': result.get('confidence', 0.5),
+                    'scam_type': result.get('scam_type'),
+                    'reasoning': f"Groq LLM: {result.get('reasoning', 'Analyzed')}"
+                }
+            except json.JSONDecodeError:
+                # Fallback parsing if JSON is invalid
+                is_scam = 'true' in llm_response.lower() or 'scam' in llm_response.lower()
+                confidence = 0.7 if is_scam else 0.3
+                return {
+                    'is_scam': is_scam,
+                    'confidence': confidence,
+                    'scam_type': None,
+                    'reasoning': f"Groq LLM (parsed): {llm_response[:100]}"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"LLM detection failed: {str(e)}")
+            # Fallback to pattern-based
+            pattern_score = self._pattern_based_detection(text)
+            return {
+                'is_scam': pattern_score > 0.15,
+                'confidence': min(pattern_score * 3.5, 0.95),
+                'scam_type': self._classify_scam_type(text) if pattern_score > 0.15 else None,
+                'reasoning': f"LLM error, pattern fallback: {pattern_score:.2f}"
+            }
     
     def _pattern_based_detection(self, text: str) -> float:
         """Detect scam patterns using regex matching."""
@@ -149,73 +270,6 @@ class ScamDetector:
                 total_score += weight * 0.1  # Reduced weight for individual keywords
         
         return min(total_score, 1.0)
-    
-    async def _ai_based_detection(self, message: Message, conversation_history: List[Message] = None) -> Dict[str, Any]:
-        """Use AI to analyze message for scam indicators."""
-        if not self.client:
-            return {'score': 0.0, 'reasoning': 'AI analysis not available'}
-        
-        try:
-            # Prepare context
-            context = f"Message: {message.text}\n"
-            if conversation_history:
-                context += "Conversation history:\n"
-                for msg in conversation_history[-3:]:  # Last 3 messages for context
-                    context += f"{msg.sender}: {msg.text}\n"
-            
-            system_prompt = """
-You are an expert scam detection system. Analyze the given message and conversation context to determine if this is likely a scam.
-
-Common scam indicators:
-- Urgency tactics ("act now", "urgent", "expires today")
-- Financial threats ("account blocked", "suspicious activity")
-- Credential requests (asking for OTP, PIN, passwords, UPI ID)
-- Impersonation (claiming to be from banks, government)
-- Too-good-to-be-true offers (prizes, rewards, free money)
-- Poor grammar or spelling
-- Generic greetings without personalization
-
-Respond with a JSON object containing:
-- "is_scam": boolean
-- "confidence": float between 0.0 and 1.0
-- "reasoning": string explaining your analysis
-- "scam_type": string or null (e.g., "phishing", "financial_fraud", "prize_scam")
-"""
-            
-            response = self.client.chat.completions.create(
-                model=settings.GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": context}
-                ],
-                max_tokens=300,
-                temperature=0.1
-            )
-            
-            # Parse AI response
-            ai_response = response.choices[0].message.content
-            
-            # Try to extract structured response
-            try:
-                import json
-                ai_data = json.loads(ai_response)
-                return {
-                    'score': ai_data.get('confidence', 0.0),
-                    'reasoning': ai_data.get('reasoning', 'AI analysis completed'),
-                    'scam_type': ai_data.get('scam_type')
-                }
-            except json.JSONDecodeError:
-                # Fallback: simple confidence extraction
-                confidence = 0.7 if 'scam' in ai_response.lower() else 0.3
-                return {
-                    'score': confidence,
-                    'reasoning': ai_response[:200],
-                    'scam_type': None
-                }
-                
-        except Exception as e:
-            self.logger.error(f"AI analysis failed: {str(e)}")
-            return {'score': 0.0, 'reasoning': f'AI analysis error: {str(e)}'}
     
     def _classify_scam_type(self, text: str) -> str:
         """Classify the type of scam based on content."""

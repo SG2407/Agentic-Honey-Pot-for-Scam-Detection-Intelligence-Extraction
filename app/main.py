@@ -114,9 +114,9 @@ async def honeypot_endpoint(
                 }
             )
         
-        # Generate response
-        if conversation_state.agent_activated:
-            # AI agent handles the conversation
+        # Generate response ONLY for scam messages
+        if conversation_state.agent_activated and detection_result.is_scam:
+            # AI agent handles scam conversation
             reply = await conversation_agent.generate_response(
                 conversation_state,
                 detection_result.scam_type
@@ -131,17 +131,35 @@ async def honeypot_endpoint(
             conversation_state.add_message(agent_message)
             
         else:
-            # Not detected as scam yet, give neutral response
-            reply = "I'm not sure I understand. Could you provide more details?"
+            # Legitimate message - just log, no AI engagement
+            log_conversation_event(
+                logger,
+                'legitimate_message_logged',
+                session_id,
+                {
+                    'message': request.message.text,
+                    'confidence': detection_result.confidence,
+                    'reason': 'Not detected as scam, no agent activation'
+                }
+            )
+            reply = "Message received. Thank you."
         
         # Update conversation state
         conversation_store[session_id] = conversation_state
         
-        # Check if conversation should end and send callback
+        # Check if scam conversation should end and send callback
         if (conversation_state.scam_detected and 
+            conversation_state.agent_activated and
             not conversation_agent.should_continue_conversation(conversation_state)):
             
-            # Schedule background task to send callback
+            log_conversation_event(
+                logger,
+                'conversation_ending',
+                session_id,
+                {'total_messages': len(conversation_state.messages)}
+            )
+            
+            # Schedule background task to send callback with extracted intelligence
             background_tasks.add_task(
                 send_final_callback,
                 session_id,
@@ -150,7 +168,13 @@ async def honeypot_endpoint(
         
         return HoneypotResponse(
             status="success",
-            reply=reply
+            reply=reply,
+            scamDetection={
+                "isScam": detection_result.is_scam,
+                "confidence": detection_result.confidence,
+                "scamType": detection_result.scam_type,
+                "reasoning": detection_result.reasoning[:200] if detection_result.reasoning else None
+            }
         )
         
     except Exception as e:

@@ -239,6 +239,44 @@ IMPORTANT GUIDELINES:
         
         return base_prompt + "\n\nPersona: " + persona_prompts.get(persona, persona_prompts['cautious_user'])
     
+    async def generate_casual_response(self, message: str, conversation_state: ConversationState) -> str:
+        """Generate a casual, friendly response for non-scam messages."""
+        
+        if self.client:
+            try:
+                system_prompt = """You are a friendly, helpful person responding to casual messages.
+Keep responses natural, brief, and conversational. Show interest and ask follow-up questions.
+Examples:
+- Meeting: "Sure! What time works for you?"
+- Location: "Sounds good. I'll see you there!"
+- Plans: "That works for me. Let me know if anything changes."
+"""
+                
+                response = self.client.chat.completions.create(
+                    model=settings.GROQ_MODEL,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": message}
+                    ],
+                    max_tokens=100,
+                    temperature=0.8
+                )
+                
+                return response.choices[0].message.content.strip()
+            except Exception as e:
+                self.logger.error(f"Casual response generation failed: {str(e)}")
+        
+        # Fallback responses
+        casual_responses = [
+            "That sounds good! Tell me more.",
+            "Sure, I'm available. What time works for you?",
+            "Got it. Thanks for letting me know!",
+            "Okay, sounds like a plan!",
+            "Thanks for the update. See you then!"
+        ]
+        
+        return random.choice(casual_responses)
+    
     def should_continue_conversation(self, conversation_state: ConversationState) -> bool:
         """Determine if conversation should continue."""
         

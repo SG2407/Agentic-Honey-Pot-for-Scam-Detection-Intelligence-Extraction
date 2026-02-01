@@ -25,6 +25,7 @@ class HoneypotResponse(BaseModel):
     """Response model for honeypot API."""
     status: str = Field(..., description="Response status")
     reply: str = Field(..., description="Agent's reply message")
+    scamDetection: Optional[Dict[str, Any]] = Field(None, description="Scam detection results")
 
 class ExtractedIntelligence(BaseModel):
     """Extracted intelligence from scam conversation."""
