@@ -38,6 +38,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Global request logging middleware (logs EVERY request before auth)
+@app.middleware("http")
+async def log_all_requests(request: Request, call_next):
+    """Log every incoming request to diagnose GUVI endpoint issues."""
+    logger.info(f"🔥 INCOMING REQUEST: {request.method} {request.url}")
+    logger.info(f"🔥 Headers: {dict(request.headers)}")
+    logger.info(f"🔥 Client: {request.client}")
+    response = await call_next(request)
+    logger.info(f"🔥 Response Status: {response.status_code}")
+    return response
+
 # Initialize components
 logger = setup_logger(__name__)
 scam_detector = ScamDetector()
@@ -48,12 +59,32 @@ callback_service = CallbackService()
 # In-memory storage for conversation states (in production, use Redis/Database)
 conversation_store: Dict[str, ConversationState] = {}
 
-# API Key dependency
-async def verify_api_key(x_api_key: str = Header(...)):
-    """Verify API key from request headers."""
-    if x_api_key != settings.API_KEY:
+# API Key dependency (flexible and case-insensitive)
+async def verify_api_key(request: Request):
+    """Verify API key from request headers (case-insensitive, multiple header options)."""
+    # Try multiple header variations (GUVI might use different formats)
+    api_key = (
+        request.headers.get("x-api-key") or
+        request.headers.get("X-API-KEY") or
+        request.headers.get("X-Api-Key") or
+        request.headers.get("authorization") or
+        request.headers.get("Authorization") or
+        request.query_params.get("api_key") or
+        request.query_params.get("API_KEY")
+    )
+    
+    logger.info(f"🔑 API Key extracted: {api_key}")
+    logger.info(f"🔑 All headers: {dict(request.headers)}")
+    
+    if not api_key:
+        logger.error("❌ No API key found in headers or query params")
+        raise HTTPException(status_code=401, detail="Missing API key")
+    
+    if api_key != settings.API_KEY:
+        logger.error(f"❌ Invalid API key: {api_key}")
         raise HTTPException(status_code=401, detail="Invalid API key")
-    return x_api_key
+    
+    return api_key
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -82,6 +113,7 @@ async def health_check():
 
 @app.post("/honeypot")
 async def honeypot_endpoint(
+    request: Request,
     request_body: dict,
     background_tasks: BackgroundTasks,
     api_key: str = Depends(verify_api_key)
