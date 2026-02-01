@@ -59,6 +59,35 @@ callback_service = CallbackService()
 # In-memory storage for conversation states (in production, use Redis/Database)
 conversation_store: Dict[str, ConversationState] = {}
 
+def has_extracted_intelligence(conversation_state: ConversationState) -> bool:
+    """Check if we have extracted any meaningful intelligence."""
+    intelligence = intelligence_extractor.extract_from_conversation(
+        conversation_state.messages,
+        conversation_state.sessionId
+    )
+    
+    # Return True if we have ANY intelligence data
+    has_intel = (
+        len(intelligence.bankAccounts) > 0 or
+        len(intelligence.upiIds) > 0 or
+        len(intelligence.phishingLinks) > 0 or
+        len(intelligence.phoneNumbers) > 0
+    )
+    
+    if has_intel:
+        logger.info(
+            f"Intelligence extracted for session {conversation_state.sessionId}",
+            extra={
+                'session_id': conversation_state.sessionId,
+                'bank_accounts': len(intelligence.bankAccounts),
+                'upi_ids': len(intelligence.upiIds),
+                'phishing_links': len(intelligence.phishingLinks),
+                'phone_numbers': len(intelligence.phoneNumbers)
+            }
+        )
+    
+    return has_intel
+
 # API Key dependency (flexible and case-insensitive)
 async def verify_api_key(request: Request):
     """Verify API key from request headers (case-insensitive, multiple header options)."""
@@ -224,24 +253,37 @@ async def honeypot_endpoint(
         # Update conversation state
         conversation_store[session_id] = conversation_state
         
-        # Check if scam conversation should end and send callback
+        # Check if we should send callback:
+        # 1. Immediately if intelligence extracted (bank accounts, UPI IDs, etc.)
+        # 2. Or when conversation naturally ends (message limits, goodbye, etc.)
         if (conversation_state.scam_detected and 
-            conversation_state.agent_activated and
-            not conversation_agent.should_continue_conversation(conversation_state)):
+            conversation_state.agent_activated):
             
-            log_conversation_event(
-                logger,
-                'conversation_ending',
-                session_id,
-                {'total_messages': len(conversation_state.messages)}
-            )
+            # Check if we have extracted meaningful intelligence
+            intel_extracted = has_extracted_intelligence(conversation_state)
+            conversation_should_end = not conversation_agent.should_continue_conversation(conversation_state)
             
-            # Schedule background task to send callback with extracted intelligence
-            background_tasks.add_task(
-                send_final_callback,
-                session_id,
-                conversation_state
-            )
+            if intel_extracted or conversation_should_end:
+                reason = "intelligence_extracted" if intel_extracted else "conversation_ended"
+                
+                log_conversation_event(
+                    logger,
+                    'callback_triggered',
+                    session_id,
+                    {
+                        'total_messages': len(conversation_state.messages),
+                        'reason': reason,
+                        'intel_extracted': intel_extracted,
+                        'should_end': conversation_should_end
+                    }
+                )
+                
+                # Schedule background task to send callback with extracted intelligence
+                background_tasks.add_task(
+                    send_final_callback,
+                    session_id,
+                    conversation_state
+                )
         
         # Return minimal response as per GUVI specification
         return HoneypotResponse(
