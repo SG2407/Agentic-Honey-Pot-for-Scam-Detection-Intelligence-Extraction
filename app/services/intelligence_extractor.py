@@ -87,12 +87,8 @@ class IntelligenceExtractor:
                 # Clean and validate
                 clean_account = re.sub(r'[^\d]', '', str(match))
                 if 9 <= len(clean_account) <= 18:  # Valid account number length
-                    # Mask for privacy (keep first 4 and last 4 digits)
-                    if len(clean_account) > 8:
-                        masked = clean_account[:4] + 'X' * (len(clean_account) - 8) + clean_account[-4:]
-                        accounts.add(masked)
-                    else:
-                        accounts.add(clean_account)
+                    # Send EXACT value, no masking
+                    accounts.add(clean_account)
         
         return list(accounts)
     
@@ -105,14 +101,8 @@ class IntelligenceExtractor:
             for match in matches:
                 clean_upi = str(match).strip()
                 if '@' in clean_upi and len(clean_upi) > 5:
-                    # Mask username part for privacy
-                    username, domain = clean_upi.split('@', 1)
-                    if len(username) > 3:
-                        masked_username = username[:2] + 'X' * (len(username) - 2)
-                        masked_upi = f"{masked_username}@{domain}"
-                        upi_ids.add(masked_upi)
-                    else:
-                        upi_ids.add(clean_upi)
+                    # Send EXACT value, no masking
+                    upi_ids.add(clean_upi)
         
         return list(upi_ids)
     
@@ -126,14 +116,8 @@ class IntelligenceExtractor:
                 # Clean phone number
                 clean_phone = re.sub(r'[^\d+]', '', str(match))
                 if len(clean_phone) >= 10:
-                    # Mask middle digits for privacy
-                    if len(clean_phone) == 10:
-                        masked = clean_phone[:3] + 'X' * 4 + clean_phone[-3:]
-                    elif len(clean_phone) == 13 and clean_phone.startswith('+91'):
-                        masked = clean_phone[:6] + 'X' * 4 + clean_phone[-3:]
-                    else:
-                        masked = clean_phone[:3] + 'X' * (len(clean_phone) - 6) + clean_phone[-3:]
-                    phone_numbers.add(masked)
+                    # Send EXACT value, no masking
+                    phone_numbers.add(clean_phone)
         
         return list(phone_numbers)
     
@@ -146,20 +130,8 @@ class IntelligenceExtractor:
             for match in matches:
                 clean_link = str(match).strip()
                 if self._is_suspicious_link(clean_link):
-                    # Mask domain for safety
-                    if '://' in clean_link:
-                        protocol, rest = clean_link.split('://', 1)
-                        if '/' in rest:
-                            domain, path = rest.split('/', 1)
-                            masked_domain = self._mask_domain(domain)
-                            masked_link = f"{protocol}://{masked_domain}/{path}"
-                        else:
-                            masked_domain = self._mask_domain(rest)
-                            masked_link = f"{protocol}://{masked_domain}"
-                    else:
-                        masked_link = self._mask_domain(clean_link)
-                    
-                    links.add(masked_link)
+                    # Send EXACT value, no masking
+                    links.add(clean_link)
         
         return list(links)
     

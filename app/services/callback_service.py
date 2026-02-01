@@ -16,14 +16,29 @@ class CallbackService:
         """Send final intelligence result to GUVI endpoint."""
         
         try:
-            # Log the payload content for validation
+            # Convert to dict and remove empty arrays from extractedIntelligence
             payload_dict = payload.dict()
+            
+            # Clean up extractedIntelligence - remove empty arrays
+            intel = payload_dict['extractedIntelligence']
+            cleaned_intel = {k: v for k, v in intel.items() if v}  # Only include non-empty values
+            payload_dict['extractedIntelligence'] = cleaned_intel
+            
+            # Ensure only required fields (no extra fields)
+            final_payload = {
+                'sessionId': payload_dict['sessionId'],
+                'scamDetected': payload_dict['scamDetected'],
+                'totalMessagesExchanged': payload_dict['totalMessagesExchanged'],
+                'extractedIntelligence': cleaned_intel,
+                'agentNotes': payload_dict['agentNotes']
+            }
+            
             self.logger.info(
                 f"Sending callback payload for session {payload.sessionId}",
                 extra={
                     'event_type': 'callback_payload',
                     'session_id': payload.sessionId,
-                    'payload': payload_dict,
+                    'payload': final_payload,
                     'callback_url': self.callback_url
                 }
             )
@@ -39,7 +54,7 @@ class CallbackService:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(
                     self.callback_url,
-                    json=payload_dict,
+                    json=final_payload,
                     headers={'Content-Type': 'application/json'}
                 )
                 
