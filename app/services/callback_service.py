@@ -79,7 +79,7 @@ class CallbackService:
             return False
     
     async def send_with_retry(self, payload: CallbackPayload, max_retries: int = 3) -> bool:
-        """Send callback with retry logic."""
+        """Send callback with retry logic (no delay between retries)."""
         
         for attempt in range(max_retries):
             success = await self.send_final_result(payload)
@@ -88,11 +88,9 @@ class CallbackService:
                 return True
             
             if attempt < max_retries - 1:
-                wait_time = 2 ** attempt  # Exponential backoff
                 self.logger.info(
-                    f"Retrying callback for session {payload.sessionId} in {wait_time} seconds (attempt {attempt + 1}/{max_retries})"
+                    f"Retrying callback for session {payload.sessionId} immediately (attempt {attempt + 1}/{max_retries})"
                 )
-                await asyncio.sleep(wait_time)
         
         self.logger.error(
             f"All callback attempts failed for session {payload.sessionId}",
