@@ -133,6 +133,18 @@ class ScamDetector:
     async def analyze_message(self, message: Message, conversation_history: List[Message] = None, session_id: str = None) -> ScamDetectionResult:
         """Analyze message for scam indicators using Groq LLM with pattern-based fallback."""
         
+        # HARD OVERRIDE: Check for guaranteed scam patterns FIRST
+        hard_scam_check = self._check_hard_scam_patterns(message.text)
+        if hard_scam_check['is_definite_scam']:
+            # This is 100% a scam - override any LLM decision
+            self.logger.info(f"Hard scam pattern detected: {hard_scam_check['pattern']}")
+            return ScamDetectionResult(
+                is_scam=True,
+                confidence=1.0,
+                scam_type=hard_scam_check['scam_type'],
+                reasoning=f"HARD OVERRIDE: {hard_scam_check['reasoning']}"
+            )
+        
         # Primary detection using Groq LLM
         if self.client:
             llm_result = await self._llm_based_detection(message.text)
@@ -238,6 +250,51 @@ Respond ONLY with valid JSON:
                 'scam_type': self._classify_scam_type(text) if pattern_score > 0.15 else None,
                 'reasoning': f"LLM error, pattern fallback: {pattern_score:.2f}"
             }
+    
+    def _check_hard_scam_patterns(self, text: str) -> Dict[str, Any]:
+        """Check for guaranteed scam patterns that always indicate scam."""
+        text_lower = text.lower()
+        
+        # HARD RULES: These patterns ALWAYS mean scam
+        hard_scam_rules = [
+            {
+                'patterns': [r'(?:send|share|provide|give).*?(?:otp|pin|password|cvv)', r'otp.*?(?:send|share|verify)', r'pin.*?(?:send|share)'],
+                'scam_type': 'credential_phishing',
+                'reasoning': 'Requesting OTP/PIN/password - definite credential phishing'
+            },
+            {
+                'patterns': [r'account.*?(?:blocked|suspended|closed|frozen).*?(?:verify|urgent|immediate)', r'(?:urgent|immediate).*?account.*?(?:blocked|suspended)'],
+                'scam_type': 'financial_threat',
+                'reasoning': 'Account blocking threat with urgency - definite financial threat scam'
+            },
+            {
+                'patterns': [r'upi.*?(?:pin|id|password)', r'(?:send|share).*?upi.*?(?:id|pin)'],
+                'scam_type': 'credential_phishing',
+                'reasoning': 'Requesting UPI credentials - definite UPI phishing'
+            },
+            {
+                'patterns': [r'bank account.*?(?:details|number)', r'(?:send|share).*?bank.*?(?:account|details)'],
+                'scam_type': 'credential_phishing',
+                'reasoning': 'Requesting bank account details - definite phishing'
+            },
+            {
+                'patterns': [r'won.*?(?:prize|lottery|reward)', r'congratulations.*?won', r'winner.*?(?:claim|prize)'],
+                'scam_type': 'prize_scam',
+                'reasoning': 'Prize/lottery notification - definite prize scam'
+            }
+        ]
+        
+        for rule in hard_scam_rules:
+            for pattern in rule['patterns']:
+                if re.search(pattern, text_lower):
+                    return {
+                        'is_definite_scam': True,
+                        'pattern': pattern,
+                        'scam_type': rule['scam_type'],
+                        'reasoning': rule['reasoning']
+                    }
+        
+        return {'is_definite_scam': False}
     
     def _pattern_based_detection(self, text: str) -> float:
         """Detect scam patterns using regex matching."""

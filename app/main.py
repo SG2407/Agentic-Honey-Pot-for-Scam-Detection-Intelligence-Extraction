@@ -255,7 +255,7 @@ async def honeypot_endpoint(
                 'legitimate_message_logged',
                 session_id,
                 {
-                    'message': request.message.text,
+                    'message': honeypot_request.message.text,
                     'confidence': detection_result.confidence,
                     'reason': 'Not detected as scam, no agent activation'
                 }
@@ -318,16 +318,21 @@ async def honeypot_endpoint(
             reply=reply
         )
         
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 410 for closed sessions)
+        raise
     except Exception as e:
         logger.error(
             f"Error processing request for session {session_id}: {str(e)}",
             extra={'session_id': session_id, 'error': str(e)}
         )
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         
-        # Return a neutral response even on error to maintain cover
-        return HoneypotResponse(
-            status="success",
-            reply="I'm having trouble understanding. Could you please repeat that?"
+        # Raise 500 for unexpected errors instead of masking with 200 OK
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
         )
 
 async def send_final_callback(session_id: str, conversation_state: ConversationState):
