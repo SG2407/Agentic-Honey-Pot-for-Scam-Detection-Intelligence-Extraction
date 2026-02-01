@@ -1,479 +1,296 @@
-import asyncio
-from typing import Dict
+"""FastAPI application - Agentic Honey-Pot for Scam Detection"""
+
+import os
+import logging
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request
-from fastapi.middleware.cors import CORSMiddleware
+from typing import Optional, Set, Dict
+from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
+from contextlib import asynccontextmanager
 
-from app.models import (
-    HoneypotRequest, 
-    HoneypotResponse, 
-    ConversationState, 
-    Message,
-    CallbackPayload
+from app.models import HoneypotRequest, HoneypotResponse, CallbackPayload
+from app.scam_detector import ScamDetector
+from app.intelligence_extractor import IntelligenceExtractor
+from app.conversation_agent import ConversationAgent
+from app.callback_service import CallbackService
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-from app.agents.scam_detector import ScamDetector
-from app.agents.conversation_agent import ConversationAgent
-from app.services.intelligence_extractor import IntelligenceExtractor
-from app.services.callback_service import CallbackService
-from app.utils.logger import setup_logger, log_conversation_event
-from config.settings import settings
+logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="AI-Powered Agentic Honeypot",
-    description="Scam Detection & Intelligence Extraction System",
-    version="1.0.0",
-    docs_url="/docs" if settings.is_development else None,
-    redoc_url="/redoc" if settings.is_development else None
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"] if settings.is_development else [],
-    allow_credentials=True,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
-
-# Global request logging middleware (logs EVERY request before auth)
-@app.middleware("http")
-async def log_all_requests(request: Request, call_next):
-    """Log every incoming request to diagnose GUVI endpoint issues."""
-    logger.info(f"🔥 INCOMING REQUEST: {request.method} {request.url}")
-    logger.info(f"🔥 Headers: {dict(request.headers)}")
-    logger.info(f"🔥 Client: {request.client}")
-    response = await call_next(request)
-    logger.info(f"🔥 Response Status: {response.status_code}")
-    return response
+# Global state for session tracking
+callback_sent_sessions: Set[str] = set()  # Sessions that received callback (session closed)
+last_message_time: Dict[str, datetime] = {}  # Track last message time for timeout
+message_counts: Dict[str, int] = {}  # Track actual messages exchanged per session
+MESSAGE_TIMEOUT_SECONDS = int(os.getenv("MESSAGE_TIMEOUT_SECONDS", "10"))
 
 # Initialize components
-logger = setup_logger(__name__)
 scam_detector = ScamDetector()
-conversation_agent = ConversationAgent()
 intelligence_extractor = IntelligenceExtractor()
-callback_service = CallbackService()
+conversation_agent = ConversationAgent()
 
-# In-memory storage for conversation states (in production, use Redis/Database)
-conversation_store: Dict[str, ConversationState] = {}
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup/shutdown"""
+    logger.info("🚀 Agentic Honey-Pot starting...")
+    logger.info(f"⏱  Timeout configured: {MESSAGE_TIMEOUT_SECONDS} seconds")
+    yield
+    logger.info("🛑 Agentic Honey-Pot shutting down...")
 
-# Track sessions that already sent callback (ONE callback per session)
-callback_sent_sessions: set = set()
+app = FastAPI(
+    title="Agentic Honey-Pot for Scam Detection",
+    description="AI-powered honeypot system for scam detection and intelligence gathering",
+    version="2.0.0",
+    lifespan=lifespan
+)
 
-# Track last message time for timeout mechanism
-last_message_time: Dict[str, datetime] = {}
 
-# Timeout duration: if no message for X seconds after scam detected, send callback
-MESSAGE_TIMEOUT_SECONDS = 10  # 10 seconds instead of 30 for faster callback
+# ============================================================================
+# MIDDLEWARE - Global Request Logging
+# ============================================================================
 
-def has_extracted_intelligence(conversation_state: ConversationState) -> bool:
-    """Check if we have extracted any meaningful intelligence."""
-    intelligence = intelligence_extractor.extract_from_conversation(
-        conversation_state.messages,
-        conversation_state.sessionId
-    )
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests"""
+    logger.info(f"📥 {request.method} {request.url.path} from {request.client.host}")
+    logger.info(f"   Headers: {dict(request.headers)}")
+    response = await call_next(request)
+    return response
+
+
+# ============================================================================
+# API KEY VERIFICATION (Flexible, Case-Insensitive)
+# ============================================================================
+
+async def verify_api_key(
+    x_api_key: Optional[str] = Header(None),
+    X_API_KEY: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+    api_key: Optional[str] = Query(None)
+):
+    """Flexible API key verification - checks multiple headers and query params"""
+    provided_key = x_api_key or X_API_KEY or authorization or api_key
+    expected_key = os.getenv("API_KEY", "team_recursives")
     
-    # Return True if we have ANY intelligence data
-    has_intel = (
-        len(intelligence.bankAccounts) > 0 or
-        len(intelligence.upiIds) > 0 or
-        len(intelligence.phishingLinks) > 0 or
-        len(intelligence.phoneNumbers) > 0
-    )
-    
-    if has_intel:
-        logger.info(
-            f"Intelligence extracted for session {conversation_state.sessionId}",
-            extra={
-                'session_id': conversation_state.sessionId,
-                'bank_accounts': len(intelligence.bankAccounts),
-                'upi_ids': len(intelligence.upiIds),
-                'phishing_links': len(intelligence.phishingLinks),
-                'phone_numbers': len(intelligence.phoneNumbers)
-            }
-        )
-    
-    return has_intel
-
-# API Key dependency (flexible and case-insensitive)
-async def verify_api_key(request: Request):
-    """Verify API key from request headers (case-insensitive, multiple header options)."""
-    # Try multiple header variations (GUVI might use different formats)
-    api_key = (
-        request.headers.get("x-api-key") or
-        request.headers.get("X-API-KEY") or
-        request.headers.get("X-Api-Key") or
-        request.headers.get("authorization") or
-        request.headers.get("Authorization") or
-        request.query_params.get("api_key") or
-        request.query_params.get("API_KEY")
-    )
-    
-    logger.info(f"🔑 API Key extracted: {api_key}")
-    logger.info(f"🔑 All headers: {dict(request.headers)}")
-    
-    if not api_key:
-        logger.error("❌ No API key found in headers or query params")
+    if not provided_key:
+        logger.error("❌ Missing API key")
         raise HTTPException(status_code=401, detail="Missing API key")
     
-    if api_key != settings.API_KEY:
-        logger.error(f"❌ Invalid API key: {api_key}")
+    if provided_key != expected_key:
+        logger.error(f"❌ Invalid API key: {provided_key}")
         raise HTTPException(status_code=401, detail="Invalid API key")
     
-    return api_key
+    return provided_key
 
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """Custom handler for validation errors to help debug GUVI portal requests."""
-    body = await request.body()
-    logger.error(f"Validation error for request body: {body.decode('utf-8')}")
-    logger.error(f"Validation errors: {exc.errors()}")
-    return JSONResponse(
-        status_code=422,
-        content={
-            "status": "error",
-            "message": "INVALID_REQUEST_BODY",
-            "details": exc.errors(),
-            "body_received": body.decode('utf-8')
-        }
-    )
+
+# ============================================================================
+# MAIN HONEYPOT ENDPOINT
+# ============================================================================
+
+@app.post("/honeypot", response_model=HoneypotResponse)
+async def honeypot_endpoint(
+    request: HoneypotRequest,
+    api_key: str = Header(None, alias="x-api-key")
+):
+    """
+    Main honeypot endpoint - Single execution flow:
+    1. Check if callback already sent → 410 Gone
+    2. Check timeout → trigger callback if exceeded
+    3. Detect scam (hard rules → LLM)
+    4. Extract intelligence from ALL messages
+    5. If intel found → send callback → mark closed
+    6. Generate reply (engage if scam, neutral if not)
+    7. Return 200 OK with reply
+    """
+    session_id = request.sessionId
+    current_time = datetime.now(timezone.utc)
+    
+    # Initialize message count for new session
+    if session_id not in message_counts:
+        message_counts[session_id] = 0
+    
+    logger.info(f"\n{'='*80}")
+    logger.info(f"📨 New message for session: {session_id}")
+    logger.info(f"   Message: {request.message.text}")
+    logger.info(f"   History length: {len(request.conversationHistory)}")
+    
+    # Increment count for scammer message received
+    message_counts[session_id] += 1
+    logger.info(f"   Messages so far: {message_counts[session_id]} (including this scammer message)")
+    
+    try:
+        # ====================================================================
+        # STEP 1: Check if callback already sent (session closed)
+        # ====================================================================
+        if session_id in callback_sent_sessions:
+            logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
+            return JSONResponse(
+                status_code=410,
+                content={"error": "Session closed. Callback already sent."}
+            )
+        
+        # ====================================================================
+        # STEP 2: Detect scam (hard rules FIRST, then LLM)
+        # ====================================================================
+        detection_result = scam_detector.analyze_message(
+            request.message.text,
+            request.conversationHistory
+        )
+        
+        logger.info(f"🔍 Detection result:")
+        logger.info(f"   Is scam: {detection_result.is_scam}")
+        logger.info(f"   Confidence: {detection_result.confidence}")
+        logger.info(f"   Type: {detection_result.scam_type}")
+        logger.info(f"   Reasoning: {detection_result.reasoning}")
+        
+        # ====================================================================
+        # STEP 3: Check timeout (ONLY for scam sessions)
+        # Non-scam sessions: NO timeout tracking, NO callback, stay OPEN
+        # Scam sessions: Track time, can trigger timeout callback
+        # ====================================================================
+        timeout_triggered = False
+        if detection_result.is_scam and detection_result.confidence >= 0.7:
+            # Check timeout for scam sessions
+            if session_id in last_message_time:
+                time_since_last = (current_time - last_message_time[session_id]).total_seconds()
+                logger.info(f"⏱  Time since last message: {time_since_last:.1f}s")
+                
+                if time_since_last > MESSAGE_TIMEOUT_SECONDS:
+                    logger.info(f"⏰ TIMEOUT TRIGGERED ({MESSAGE_TIMEOUT_SECONDS}s exceeded for scam session)")
+                    timeout_triggered = True
+            
+            # Update last message time ONLY for scam sessions
+            last_message_time[session_id] = current_time
+        else:
+            # Non-scam: Don't track time, no timeout logic applies
+            logger.info("💬 Non-scam message: No timeout tracking, session stays open")
+        
+        # ====================================================================
+        # STEP 4: Extract intelligence from ALL messages
+        # ====================================================================
+        extracted_intel = intelligence_extractor.extract_from_conversation(
+            request.message,
+            request.conversationHistory
+        )
+        
+        has_real_intel = intelligence_extractor.has_real_intelligence(extracted_intel)
+        logger.info(f"🔎 Real intelligence found: {has_real_intel}")
+        
+        # ====================================================================
+        # STEP 5: Determine if callback should be sent
+        # Callback ONLY when: Scam confirmed AND (Real intel OR Timeout)
+        # ====================================================================
+        should_send_callback = False
+        callback_reason = ""
+        
+        # Only send callback if scam is confirmed (confidence >= 0.7)
+        if detection_result.is_scam and detection_result.confidence >= 0.7:
+            if has_real_intel:
+                should_send_callback = True
+                callback_reason = "Scam confirmed + Real intelligence extracted"
+            elif timeout_triggered:
+                should_send_callback = True
+                callback_reason = f"Scam confirmed + Timeout ({MESSAGE_TIMEOUT_SECONDS}s) reached"
+        
+        # ====================================================================
+        # STEP 6: Send callback if triggered
+        # ====================================================================
+        if should_send_callback:
+            logger.info(f"📤 CALLBACK TRIGGERED: {callback_reason}")
+            
+            # Use actual tracked message count
+            # This is the count BEFORE we send the reply (if we were to send one)
+            # Since callback is sent, no reply will be sent, so count stays as is
+            total_messages = message_counts[session_id]
+            
+            # Build callback payload
+            callback_payload = CallbackPayload(
+                sessionId=session_id,
+                scamDetected=detection_result.is_scam,
+                totalMessagesExchanged=total_messages,
+                extractedIntelligence=extracted_intel,
+                agentNotes=detection_result.reasoning
+            )
+            
+            # Mark session as closed BEFORE sending (prevent race conditions)
+            callback_sent_sessions.add(session_id)
+            
+            # Send callback
+            callback_success = await CallbackService.send_final_result(callback_payload)
+            
+            if callback_success:
+                logger.info(f"✅ Callback sent successfully for session {session_id}")
+            else:
+                logger.error(f"❌ Callback failed for session {session_id}")
+            
+            # Return 410 Gone (session closed)
+            return JSONResponse(
+                status_code=410,
+                content={"message": "Session closed. Final result sent to GUVI."}
+            )
+        
+        # ====================================================================
+        # STEP 7: Generate reply (no callback sent yet, keep conversation going)
+        # ====================================================================
+        if detection_result.is_scam and detection_result.confidence >= 0.7:
+            # Scam detected - engage with AI agent
+            logger.info("🤖 Generating AI agent reply (scam engagement)")
+            reply_text = conversation_agent.generate_reply(
+                scammer_message=request.message.text,
+                scam_type=detection_result.scam_type or "unknown",
+                conversation_history=request.conversationHistory
+            )
+        else:
+            # Not a scam (or low confidence) - neutral response
+            logger.info("💬 Generating neutral reply (non-scam)")
+            reply_text = conversation_agent.generate_neutral_reply()
+        
+        # Increment count for agent reply that we're about to send
+        message_counts[session_id] += 1
+        logger.info(f"   Total messages after reply: {message_counts[session_id]}")
+        
+        # ====================================================================
+        # STEP 8: Return response (200 OK with reply)
+        # ====================================================================
+        logger.info(f"✅ Responding with: {reply_text}")
+        logger.info(f"{'='*80}\n")
+        
+        return HoneypotResponse(
+            status="success",
+            reply=reply_text
+        )
+    
+    except Exception as e:
+        logger.error(f"❌ Unexpected error in honeypot endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# ============================================================================
+# HEALTH CHECK
+# ============================================================================
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "environment": settings.ENVIRONMENT
+        "service": "Agentic Honey-Pot",
+        "version": "2.0.0",
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-@app.post("/honeypot")
-async def honeypot_endpoint(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    api_key: str = Depends(verify_api_key)
-):
-    """Main honeypot endpoint for processing scam messages (POST with JSON body)."""
-    
-    try:
-        # Read raw body for debugging
-        body = await request.json()
-        logger.info(f"📥 Raw request body: {body}")
-        
-        # Parse into Pydantic model directly (let Pydantic handle validation)
-        honeypot_request = HoneypotRequest(**body)
-        session_id = honeypot_request.sessionId
-        
-        # CRITICAL: Reject all messages if callback already sent for this session
-        # Return 410 Gone to indicate session is permanently closed
-        if session_id in callback_sent_sessions:
-            logger.info(
-                f"🚫 Rejecting message for session {session_id} - callback already sent, session closed",
-                extra={'session_id': session_id, 'action': 'session_closed'}
-            )
-            raise HTTPException(
-                status_code=410,
-                detail="Session closed - final result already submitted"
-            )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Request parsing failed: {e}")
-        logger.error(f"❌ Error type: {type(e).__name__}")
-        import traceback
-        logger.error(f"❌ Traceback: {traceback.format_exc()}")
-        raise HTTPException(status_code=400, detail=f"INVALID_REQUEST_BODY: {str(e)}")
-    
-    try:
-        # Log incoming request
-        log_conversation_event(
-            logger, 
-            'message_received', 
-            session_id,
-            {'message': honeypot_request.message.text, 'sender': honeypot_request.message.sender}
-        )
-        
-        # Get or create conversation state
-        conversation_state = conversation_store.get(
-            session_id,
-            ConversationState(sessionId=session_id)
-        )
-        
-        # Update last message time for timeout tracking
-        current_time = datetime.now(timezone.utc)
-        last_message_time[session_id] = current_time
-        
-        # Add message to conversation history
-        conversation_state.add_message(honeypot_request.message)
-        conversation_store[session_id] = conversation_state
-        
-        # Detect scam intent
-        detection_result = await scam_detector.analyze_message(
-            honeypot_request.message,
-            honeypot_request.conversationHistory,
-            session_id
-        )
-        
-        # If scam detected and agent not yet activated
-        if detection_result.is_scam and not conversation_state.agent_activated:
-            conversation_state.scam_detected = True
-            conversation_state.agent_activated = True
-            
-            log_conversation_event(
-                logger,
-                'agent_activated',
-                session_id,
-                {
-                    'scam_type': detection_result.scam_type,
-                    'confidence': detection_result.confidence
-                }
-            )
-        
-        # Generate response ONLY for scam messages
-        if conversation_state.agent_activated and detection_result.is_scam:
-            # AI agent handles scam conversation
-            reply = await conversation_agent.generate_response(
-                conversation_state,
-                detection_result.scam_type
-            )
-            
-            # Add agent response to conversation
-            agent_message = Message(
-                sender="user",
-                text=reply,
-                timestamp=datetime.now(timezone.utc)
-            )
-            conversation_state.add_message(agent_message)
-            
-        else:
-            # Legitimate message - just log, no AI engagement
-            log_conversation_event(
-                logger,
-                'legitimate_message_logged',
-                session_id,
-                {
-                    'message': honeypot_request.message.text,
-                    'confidence': detection_result.confidence,
-                    'reason': 'Not detected as scam, no agent activation'
-                }
-            )
-            reply = "Message received. Thank you."
-        
-        # Update conversation state
-        conversation_store[session_id] = conversation_state
-        
-        # CALLBACK TRIGGER CONDITIONS (STRICT - ONE CALLBACK PER SESSION):
-        # 1. Callback NOT already sent for this session
-        # 2. Scam detected and agent activated
-        # 3. EITHER:
-        #    a) Real intelligence extracted (bank accounts, UPI, phone numbers, links)
-        #    b) Timeout reached (no new message for MESSAGE_TIMEOUT_SECONDS)
-        
-        if (session_id not in callback_sent_sessions and
-            conversation_state.scam_detected and 
-            conversation_state.agent_activated):
-            
-            # Check for REAL intelligence (not just suspicious keywords)
-            has_real_intel = has_extracted_intelligence(conversation_state)
-            
-            # Check if timeout reached
-            time_since_last = (datetime.now(timezone.utc) - conversation_state.updated_at).total_seconds()
-            timeout_reached = time_since_last >= MESSAGE_TIMEOUT_SECONDS
-            
-            # Send callback if we have intel OR timeout reached
-            should_send_callback = has_real_intel or timeout_reached
-            
-            if should_send_callback:
-                reason = "real_intelligence_extracted" if has_real_intel else "timeout_reached"
-                
-                # Mark this session as callback sent IMMEDIATELY to prevent duplicates
-                callback_sent_sessions.add(session_id)
-                
-                log_conversation_event(
-                    logger,
-                    'callback_triggered',
-                    session_id,
-                    {
-                        'total_messages': len(conversation_state.messages),
-                        'reason': reason,
-                        'has_real_intel': has_real_intel,
-                        'timeout_reached': timeout_reached,
-                        'time_since_last': time_since_last
-                    }
-                )
-                
-                # Schedule background task to send callback
-                background_tasks.add_task(
-                    send_final_callback,
-                    session_id,
-                    conversation_state
-                )
-        
-        # Return minimal response as per GUVI specification
-        return HoneypotResponse(
-            status="success",
-            reply=reply
-        )
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions (like 410 for closed sessions)
-        raise
-    except Exception as e:
-        logger.error(
-            f"Error processing request for session {session_id}: {str(e)}",
-            extra={'session_id': session_id, 'error': str(e)}
-        )
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        
-        # Raise 500 for unexpected errors instead of masking with 200 OK
-        raise HTTPException(
-            status_code=500,
-            detail=f"Internal server error: {str(e)}"
-        )
 
-async def send_final_callback(session_id: str, conversation_state: ConversationState):
-    """Send final intelligence callback (background task)."""
-    
-    try:
-        # Extract intelligence from conversation
-        intelligence = intelligence_extractor.extract_from_conversation(
-            conversation_state.messages,
-            session_id
-        )
-        
-        # Generate agent notes
-        agent_notes = generate_agent_notes(conversation_state)
-        
-        # Create callback payload
-        payload = CallbackPayload(
-            sessionId=session_id,
-            scamDetected=conversation_state.scam_detected,
-            totalMessagesExchanged=conversation_state.total_messages,
-            extractedIntelligence=intelligence,
-            agentNotes=agent_notes
-        )
-        
-        # Send callback with retry
-        success = await callback_service.send_with_retry(payload)
-        
-        if success:
-            log_conversation_event(
-                logger,
-                'callback_sent',
-                session_id,
-                {'intelligence_extracted': intelligence.dict()}
-            )
-        else:
-            logger.error(f"Failed to send callback for session {session_id}")
-            
-        # Clean up conversation state after callback
-        if session_id in conversation_store:
-            del conversation_store[session_id]
-            
-    except Exception as e:
-        logger.error(
-            f"Error in background callback for session {session_id}: {str(e)}",
-            extra={'session_id': session_id, 'error': str(e)}
-        )
-
-def generate_agent_notes(conversation_state: ConversationState) -> str:
-    """Generate summary notes about scammer behavior."""
-    
-    notes = []
-    
-    # Analyze conversation patterns
-    scammer_messages = [msg for msg in conversation_state.messages if msg.sender == "scammer"]
-    
-    if len(scammer_messages) > 5:
-        notes.append("Scammer was persistent with multiple follow-up messages")
-    
-    # Check for urgency tactics
-    urgency_keywords = ['urgent', 'immediate', 'now', 'quickly', 'asap']
-    urgency_count = sum(1 for msg in scammer_messages 
-                       for keyword in urgency_keywords 
-                       if keyword in msg.text.lower())
-    
-    if urgency_count > 0:
-        notes.append(f"Used urgency tactics ({urgency_count} instances)")
-    
-    # Check for credential requests
-    credential_keywords = ['otp', 'pin', 'password', 'account number', 'upi']
-    credential_requests = sum(1 for msg in scammer_messages 
-                            for keyword in credential_keywords 
-                            if keyword in msg.text.lower())
-    
-    if credential_requests > 0:
-        notes.append(f"Requested credentials ({credential_requests} instances)")
-    
-    # Check for impersonation
-    impersonation_keywords = ['bank', 'customer care', 'security', 'government']
-    impersonation_count = sum(1 for msg in scammer_messages 
-                            for keyword in impersonation_keywords 
-                            if keyword in msg.text.lower())
-    
-    if impersonation_count > 0:
-        notes.append("Attempted impersonation of official entities")
-    
-    # Add conversation duration info
-    if conversation_state.messages:
-        try:
-            start_time = conversation_state.messages[0].timestamp
-            end_time = conversation_state.messages[-1].timestamp
-            
-            # Ensure both are timezone-aware or both are naive
-            if start_time.tzinfo is None and end_time.tzinfo is not None:
-                from datetime import timezone
-                start_time = start_time.replace(tzinfo=timezone.utc)
-            elif start_time.tzinfo is not None and end_time.tzinfo is None:
-                from datetime import timezone
-                end_time = end_time.replace(tzinfo=timezone.utc)
-            
-            duration = end_time - start_time
-            notes.append(f"Conversation lasted {duration.total_seconds():.0f} seconds")
-        except Exception as e:
-            logger.warning(f"Could not calculate conversation duration: {e}")
-            notes.append(f"Conversation lasted {len(conversation_state.messages)} message exchanges")
-    
-    return ". ".join(notes) if notes else "Standard scam conversation pattern detected"
-
-@app.get("/stats")
-async def get_stats(api_key: str = Depends(verify_api_key)):
-    """Get system statistics (development only)."""
-    if not settings.is_development:
-        raise HTTPException(status_code=404, detail="Not found")
-    
+@app.get("/")
+async def root():
+    """Root endpoint"""
     return {
-        "active_conversations": len(conversation_store),
-        "total_sessions": len(conversation_store),
-        "environment": settings.ENVIRONMENT
+        "message": "Agentic Honey-Pot for Scam Detection",
+        "version": "2.0.0",
+        "endpoints": {
+            "honeypot": "POST /honeypot",
+            "health": "GET /health"
+        }
     }
-
-# Exception handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail}
-    )
-
-@app.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    logger.error(f"Unhandled exception: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"}
-    )
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.is_development,
-        log_level=settings.LOG_LEVEL.lower()
-    )

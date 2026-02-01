@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: honeypot-api
+    name: agentic-honey-pot-for-scam-detection
     env: python
     region: singapore
     plan: free
@@ -12,10 +12,10 @@ services:
         sync: false
       - key: API_KEY
         value: team_recursives
+      - key: CALLBACK_URL
+        value: https://hackathon.guvi.in/api/updateHoneyPotFinalResult
+      - key: MESSAGE_TIMEOUT_SECONDS
+        value: 10
       - key: ENVIRONMENT
         value: production
-      - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
-      - key: MAX_CONVERSATION_TURNS
-        value: 15
     healthCheckPath: /health

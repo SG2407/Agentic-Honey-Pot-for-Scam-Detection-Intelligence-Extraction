@@ -1,128 +1,80 @@
+"""Pydantic models for request/response validation with timezone-aware timestamp handling"""
+
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any, Union
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator
 
+
 class Message(BaseModel):
-    """Represents a single message in the conversation."""
-    sender: str = Field(..., description="Message sender: 'scammer' or 'user'")
-    text: str = Field(..., description="Message content")
-    timestamp: Union[datetime, str, int] = Field(..., description="Message timestamp in ISO-8601 format or Unix milliseconds")
-    
-    class Config:
-        extra = "allow"  # Allow any extra fields GUVI might send
+    """Message model with flexible timestamp parsing (Unix ms, ISO-8601, datetime)"""
+    sender: str
+    text: str
+    timestamp: datetime
     
     @field_validator('timestamp', mode='before')
     @classmethod
-    def parse_timestamp(cls, v):
-        """Flexible timestamp parsing - ALWAYS returns timezone-aware datetime."""
-        if isinstance(v, datetime):
-            # Ensure timezone-aware
-            if v.tzinfo is None:
-                return v.replace(tzinfo=timezone.utc)
-            return v
-        
-        # Handle Unix milliseconds (integer from GUVI)
-        if isinstance(v, (int, float)):
-            return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
-        
-        if isinstance(v, str):
-            # Try parsing with various formats
-            formats = [
-                "%Y-%m-%dT%H:%M:%S.%fZ",
-                "%Y-%m-%dT%H:%M:%SZ",
-                "%Y-%m-%dT%H:%M:%S",
-                "%Y-%m-%dT%H:%M:%S.%f",
-                "%Y-%m-%d %H:%M:%S",
-            ]
-            for fmt in formats:
-                try:
-                    dt = datetime.strptime(v, fmt)
-                    # Make timezone-aware
-                    if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
-                    return dt
-                except ValueError:
-                    continue
-            # Try ISO format parsing
-            try:
-                dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
-                if dt.tzinfo is None:
-                    dt = dt.replace(tzinfo=timezone.utc)
-                return dt
-            except:
-                pass
-        
-        # Fallback: return current time (timezone-aware)
-        return datetime.now(timezone.utc)
+    def parse_timestamp(cls, value):
+        """Parse Unix milliseconds, ISO-8601 string, or datetime object to timezone-aware datetime"""
+        if isinstance(value, datetime):
+            # If already datetime, ensure timezone-aware
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value
+        elif isinstance(value, int):
+            # Unix milliseconds from GUVI (e.g., 1769938742773)
+            return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+        elif isinstance(value, str):
+            # ISO-8601 string (e.g., "2026-01-21T10:15:30Z")
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
+        else:
+            raise ValueError(f"Unsupported timestamp format: {type(value)}")
+
 
 class Metadata(BaseModel):
-    """Message metadata."""
-    channel: Optional[str] = Field(None, description="Communication channel (SMS, WhatsApp, Email, Chat)")
-    language: Optional[str] = Field(None, description="Language used")
-    locale: Optional[str] = Field(None, description="Country or region")
+    """Metadata about the message"""
+    channel: str
+    language: str
+    locale: str
+
 
 class HoneypotRequest(BaseModel):
-    """Request model for honeypot API."""
-    sessionId: str = Field(..., description="Unique session identifier")
-    message: Message = Field(..., description="Latest incoming message")
-    conversationHistory: Optional[List[Message]] = Field(default_factory=list, description="Previous messages in conversation")
-    metadata: Optional[Metadata] = Field(None, description="Message metadata")
-    
-    class Config:
-        # Allow extra fields that GUVI portal might send
-        extra = "allow"
-        # Be flexible with field names
-        populate_by_name = True
+    """Incoming request from GUVI"""
+    sessionId: str
+    message: Message
+    conversationHistory: List[Message] = Field(default_factory=list)
+    metadata: Metadata
+
 
 class HoneypotResponse(BaseModel):
-    """Response model for honeypot API - STRICT format as per GUVI specification."""
-    status: str = Field(..., description="Response status")
-    reply: str = Field(..., description="Agent's reply message")
-    
-    class Config:
-        # Ensure clean JSON output, no extra fields
-        extra = "forbid"
+    """Response to GUVI - STRICT format (only status and reply)"""
+    status: str = Field(default="success")
+    reply: str
+
 
 class ExtractedIntelligence(BaseModel):
-    """Extracted intelligence from scam conversation."""
-    bankAccounts: List[str] = Field(default=[], description="Bank account numbers found")
-    upiIds: List[str] = Field(default=[], description="UPI IDs found")
-    phishingLinks: List[str] = Field(default=[], description="Malicious links found")
-    phoneNumbers: List[str] = Field(default=[], description="Phone numbers found")
-    suspiciousKeywords: List[str] = Field(default=[], description="Scam-related keywords")
+    """Intelligence extracted from conversation - empty arrays will be removed before sending"""
+    bankAccounts: List[str] = Field(default_factory=list)
+    upiIds: List[str] = Field(default_factory=list)
+    phishingLinks: List[str] = Field(default_factory=list)
+    phoneNumbers: List[str] = Field(default_factory=list)
+    suspiciousKeywords: List[str] = Field(default_factory=list)
+
 
 class CallbackPayload(BaseModel):
-    """Payload for final result callback to GUVI."""
-    sessionId: str = Field(..., description="Session identifier")
-    scamDetected: bool = Field(..., description="Whether scam was detected")
-    totalMessagesExchanged: int = Field(..., description="Total messages in conversation")
-    extractedIntelligence: ExtractedIntelligence = Field(..., description="Intelligence extracted")
-    agentNotes: str = Field(..., description="Summary of scammer behavior")
+    """Final result payload sent to GUVI callback endpoint"""
+    sessionId: str
+    scamDetected: bool
+    totalMessagesExchanged: int
+    extractedIntelligence: ExtractedIntelligence
+    agentNotes: str
+
 
 class ScamDetectionResult(BaseModel):
-    """Result of scam detection analysis."""
-    is_scam: bool = Field(..., description="Whether message is likely a scam")
-    confidence: float = Field(..., description="Confidence score (0.0-1.0)")
-    scam_type: Optional[str] = Field(None, description="Type of scam detected")
-    reasoning: str = Field(..., description="Explanation of detection")
-
-class ConversationState(BaseModel):
-    """Tracks conversation state for a session."""
-    sessionId: str
-    messages: List[Message] = Field(default=[])
-    scam_detected: bool = Field(default=False)
-    agent_activated: bool = Field(default=False)
-    intelligence: ExtractedIntelligence = Field(default_factory=ExtractedIntelligence)
-    agent_notes: str = Field(default="")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    
-    def add_message(self, message: Message):
-        """Add a message to the conversation."""
-        self.messages.append(message)
-        self.updated_at = datetime.now(timezone.utc)
-    
-    @property
-    def total_messages(self) -> int:
-        """Get total number of messages exchanged."""
-        return len(self.messages)
+    """Internal model for scam detection results"""
+    is_scam: bool
+    confidence: float  # 0.0 to 1.0
+    scam_type: Optional[str] = None  # credential_phishing, financial_threat, prize_scam, etc.
+    reasoning: str
