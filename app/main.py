@@ -152,34 +152,19 @@ async def health_check():
 @app.post("/honeypot")
 async def honeypot_endpoint(
     request: Request,
-    request_body: dict,
     background_tasks: BackgroundTasks,
     api_key: str = Depends(verify_api_key)
 ):
     """Main honeypot endpoint for processing scam messages (POST with JSON body)."""
     
     try:
-        # Log the raw incoming request for debugging
-        logger.info(f"📥 Raw request body: {request_body}")
+        # Read raw body for debugging
+        body = await request.json()
+        logger.info(f"📥 Raw request body: {body}")
         
-        # Validate required fields with detailed error messages
-        if "sessionId" not in request_body:
-            logger.error("❌ Missing field: sessionId")
-            raise HTTPException(status_code=400, detail="Missing required field: sessionId")
-        
-        if "message" not in request_body:
-            logger.error("❌ Missing field: message")
-            raise HTTPException(status_code=400, detail="Missing required field: message")
-        
-        message_data = request_body.get("message", {})
-        for field in ["sender", "text", "timestamp"]:
-            if field not in message_data:
-                logger.error(f"❌ Missing field: message.{field}")
-                raise HTTPException(status_code=400, detail=f"Missing required field: message.{field}")
-        
-        # Parse into Pydantic model
-        request = HoneypotRequest(**request_body)
-        session_id = request.sessionId
+        # Parse into Pydantic model directly (let Pydantic handle validation)
+        honeypot_request = HoneypotRequest(**body)
+        session_id = honeypot_request.sessionId
         
         # CRITICAL: Ignore all messages if callback already sent for this session
         if session_id in callback_sent_sessions:
@@ -196,7 +181,9 @@ async def honeypot_endpoint(
         raise
     except Exception as e:
         logger.error(f"❌ Request parsing failed: {e}")
-        logger.error(f"📄 Received body: {request_body}")
+        logger.error(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=400, detail=f"INVALID_REQUEST_BODY: {str(e)}")
     
     try:
@@ -205,7 +192,7 @@ async def honeypot_endpoint(
             logger, 
             'message_received', 
             session_id,
-            {'message': request.message.text, 'sender': request.message.sender}
+            {'message': honeypot_request.message.text, 'sender': honeypot_request.message.sender}
         )
         
         # Get or create conversation state
@@ -219,13 +206,13 @@ async def honeypot_endpoint(
         last_message_time[session_id] = current_time
         
         # Add message to conversation history
-        conversation_state.add_message(request.message)
+        conversation_state.add_message(honeypot_request.message)
         conversation_store[session_id] = conversation_state
         
         # Detect scam intent
         detection_result = await scam_detector.analyze_message(
-            request.message,
-            request.conversationHistory,
+            honeypot_request.message,
+            honeypot_request.conversationHistory,
             session_id
         )
         
