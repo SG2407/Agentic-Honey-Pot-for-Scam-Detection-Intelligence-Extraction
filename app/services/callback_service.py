@@ -16,20 +16,19 @@ class CallbackService:
         """Send final intelligence result to GUVI endpoint."""
         
         try:
-            # Convert to dict and remove empty arrays from extractedIntelligence
-            payload_dict = payload.dict()
+            # Convert to dict - KEEP all fields (GUVI requires all 5 intelligence fields)
+            payload_dict = payload.model_dump()  # Use model_dump() instead of deprecated dict()
             
-            # Clean up extractedIntelligence - remove empty arrays
+            # CRITICAL: GUVI expects ALL 5 fields present (even if empty arrays)
+            # Do NOT remove empty arrays - this causes INVALID_REQUEST_BODY
             intel = payload_dict['extractedIntelligence']
-            cleaned_intel = {k: v for k, v in intel.items() if v}  # Only include non-empty values
-            payload_dict['extractedIntelligence'] = cleaned_intel
             
             # Ensure only required fields (no extra fields)
             final_payload = {
                 'sessionId': payload_dict['sessionId'],
                 'scamDetected': payload_dict['scamDetected'],
                 'totalMessagesExchanged': payload_dict['totalMessagesExchanged'],
-                'extractedIntelligence': cleaned_intel,
+                'extractedIntelligence': intel,  # Keep all 5 fields
                 'agentNotes': payload_dict['agentNotes']
             }
             
