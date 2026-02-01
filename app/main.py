@@ -80,15 +80,43 @@ async def health_check():
         "environment": settings.ENVIRONMENT
     }
 
-@app.post("/honeypot", response_model=HoneypotResponse)
+@app.post("/honeypot")
 async def honeypot_endpoint(
-    request: HoneypotRequest,
+    request_body: dict,
     background_tasks: BackgroundTasks,
     api_key: str = Depends(verify_api_key)
 ):
     """Main honeypot endpoint for processing scam messages."""
     
-    session_id = request.sessionId
+    try:
+        # Log the raw incoming request for debugging
+        logger.info(f"📥 Raw request body: {request_body}")
+        
+        # Validate required fields with detailed error messages
+        if "sessionId" not in request_body:
+            logger.error("❌ Missing field: sessionId")
+            raise HTTPException(status_code=400, detail="Missing required field: sessionId")
+        
+        if "message" not in request_body:
+            logger.error("❌ Missing field: message")
+            raise HTTPException(status_code=400, detail="Missing required field: message")
+        
+        message_data = request_body.get("message", {})
+        for field in ["sender", "text", "timestamp"]:
+            if field not in message_data:
+                logger.error(f"❌ Missing field: message.{field}")
+                raise HTTPException(status_code=400, detail=f"Missing required field: message.{field}")
+        
+        # Parse into Pydantic model
+        request = HoneypotRequest(**request_body)
+        session_id = request.sessionId
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Request parsing failed: {e}")
+        logger.error(f"📄 Received body: {request_body}")
+        raise HTTPException(status_code=400, detail=f"INVALID_REQUEST_BODY: {str(e)}")
     
     try:
         # Log incoming request
