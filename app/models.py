@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any, Union
 from pydantic import BaseModel, Field, field_validator
 
@@ -6,7 +6,7 @@ class Message(BaseModel):
     """Represents a single message in the conversation."""
     sender: str = Field(..., description="Message sender: 'scammer' or 'user'")
     text: str = Field(..., description="Message content")
-    timestamp: Union[datetime, str] = Field(..., description="Message timestamp in ISO-8601 format")
+    timestamp: Union[datetime, str, int] = Field(..., description="Message timestamp in ISO-8601 format or Unix milliseconds")
     
     class Config:
         extra = "allow"  # Allow any extra fields GUVI might send
@@ -14,9 +14,17 @@ class Message(BaseModel):
     @field_validator('timestamp', mode='before')
     @classmethod
     def parse_timestamp(cls, v):
-        """Flexible timestamp parsing to accept multiple formats."""
+        """Flexible timestamp parsing - ALWAYS returns timezone-aware datetime."""
         if isinstance(v, datetime):
+            # Ensure timezone-aware
+            if v.tzinfo is None:
+                return v.replace(tzinfo=timezone.utc)
             return v
+        
+        # Handle Unix milliseconds (integer from GUVI)
+        if isinstance(v, (int, float)):
+            return datetime.fromtimestamp(v / 1000, tz=timezone.utc)
+        
         if isinstance(v, str):
             # Try parsing with various formats
             formats = [
@@ -28,16 +36,24 @@ class Message(BaseModel):
             ]
             for fmt in formats:
                 try:
-                    return datetime.strptime(v, fmt)
+                    dt = datetime.strptime(v, fmt)
+                    # Make timezone-aware
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
                 except ValueError:
                     continue
-            # If none work, try ISO format parsing
+            # Try ISO format parsing
             try:
-                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+                dt = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt
             except:
                 pass
-        # If all parsing fails, use current time
-        return datetime.utcnow()
+        
+        # Fallback: return current time (timezone-aware)
+        return datetime.now(timezone.utc)
 
 class Metadata(BaseModel):
     """Message metadata."""
@@ -98,13 +114,13 @@ class ConversationState(BaseModel):
     agent_activated: bool = Field(default=False)
     intelligence: ExtractedIntelligence = Field(default_factory=ExtractedIntelligence)
     agent_notes: str = Field(default="")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
     def add_message(self, message: Message):
         """Add a message to the conversation."""
         self.messages.append(message)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
     
     @property
     def total_messages(self) -> int:
