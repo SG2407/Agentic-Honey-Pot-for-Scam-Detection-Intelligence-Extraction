@@ -80,66 +80,8 @@ async def health_check():
         "environment": settings.ENVIRONMENT
     }
 
-@app.get("/honeypot")
-async def honeypot_get_endpoint(
-    sessionId: str = None,
-    message: str = None,
-    sender: str = None,
-    text: str = None,
-    timestamp: str = None,
-    background_tasks: BackgroundTasks = None,
-    api_key: str = Depends(verify_api_key)
-):
-    """GET endpoint - handles query parameters if GUVI uses GET instead of POST."""
-    logger.info(f"📥 GET request received to /honeypot with params: sessionId={sessionId}, message={message}, sender={sender}, text={text}")
-    
-    # If query parameters provided, try to process as message
-    if sessionId and (message or text):
-        try:
-            # Try to parse as JSON if message is a JSON string
-            import json
-            if message:
-                try:
-                    message_obj = json.loads(message)
-                except:
-                    message_obj = {"sender": sender or "scammer", "text": message, "timestamp": timestamp or datetime.utcnow().isoformat()}
-            else:
-                message_obj = {"sender": sender or "scammer", "text": text, "timestamp": timestamp or datetime.utcnow().isoformat()}
-            
-            # Build request body
-            request_body = {
-                "sessionId": sessionId,
-                "message": message_obj,
-                "conversationHistory": []
-            }
-            
-            logger.info(f"📦 Converted GET params to request body: {request_body}")
-            
-            # Process using POST logic
-            return await honeypot_post_endpoint(request_body, background_tasks, api_key)
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to process GET request: {e}")
-            raise HTTPException(status_code=400, detail=f"Invalid GET parameters: {str(e)}")
-    
-    # No parameters - return usage info
-    return {
-        "status": "info",
-        "message": "This endpoint accepts POST requests with JSON body OR GET with query parameters",
-        "post_example": {
-            "sessionId": "example-123",
-            "message": {
-                "sender": "scammer",
-                "text": "Example message",
-                "timestamp": "2026-01-21T10:15:30Z"
-            },
-            "conversationHistory": []
-        },
-        "get_example": "?sessionId=abc123&sender=scammer&text=Your%20account%20will%20be%20blocked&timestamp=2026-01-21T10:15:30Z"
-    }
-
 @app.post("/honeypot")
-async def honeypot_post_endpoint(
+async def honeypot_endpoint(
     request_body: dict,
     background_tasks: BackgroundTasks,
     api_key: str = Depends(verify_api_key)
