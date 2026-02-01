@@ -1,0 +1,525 @@
+{
+  "summary": {
+    "total_tests": 60,
+    "correct": 22,
+    "incorrect": 38,
+    "accuracy": 36.666666666666664,
+    "scam_detection_rate": 5.263157894736842,
+    "legitimate_detection_rate": 90.9090909090909,
+    "false_positives": 2,
+    "false_negatives": 36
+  },
+  "detailed_results": [
+    {
+      "test_id": 1,
+      "category": "Banking Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": ""
+    },
+    {
+      "test_id": 2,
+      "category": "Banking Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 502"
+    },
+    {
+      "test_id": 3,
+      "category": "Banking Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 4,
+      "category": "Banking Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 5,
+      "category": "UPI Fraud",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 6,
+      "category": "UPI Fraud",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 7,
+      "category": "UPI Fraud",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 8,
+      "category": "OTP Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 9,
+      "category": "OTP Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 10,
+      "category": "OTP Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 11,
+      "category": "Prize Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 12,
+      "category": "Prize Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 13,
+      "category": "Prize Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 14,
+      "category": "Delivery Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 15,
+      "category": "Delivery Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 16,
+      "category": "Job Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 502"
+    },
+    {
+      "test_id": 17,
+      "category": "Job Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 18,
+      "category": "Job Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 19,
+      "category": "Investment Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 20,
+      "category": "Investment Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 21,
+      "category": "Government Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 502"
+    },
+    {
+      "test_id": 22,
+      "category": "Government Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 502"
+    },
+    {
+      "test_id": 23,
+      "category": "Government Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 24,
+      "category": "Tech Support Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 25,
+      "category": "Tech Support Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 26,
+      "category": "Romance Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 27,
+      "category": "Utility Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 28,
+      "category": "Insurance Scam",
+      "expected": "scam",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 29,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 30,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "error",
+      "correct": false,
+      "error": "HTTP 503"
+    },
+    {
+      "test_id": 31,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 32,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 33,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.04,
+      "messages_count": 2
+    },
+    {
+      "test_id": 34,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 35,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 36,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 37,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 38,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 39,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 40,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 41,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.22,
+      "messages_count": 2
+    },
+    {
+      "test_id": 42,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.28,
+      "messages_count": 2
+    },
+    {
+      "test_id": 43,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 44,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 45,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 46,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 47,
+      "category": "Loan Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.08,
+      "messages_count": 2
+    },
+    {
+      "test_id": 48,
+      "category": "Loan Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.18,
+      "messages_count": 3
+    },
+    {
+      "test_id": 49,
+      "category": "Charity Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 50,
+      "category": "Rental Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.04,
+      "messages_count": 2
+    },
+    {
+      "test_id": 51,
+      "category": "Utility Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.08,
+      "messages_count": 2
+    },
+    {
+      "test_id": 52,
+      "category": "Credit Card Scam",
+      "expected": "scam",
+      "detected": "scam",
+      "correct": true,
+      "confidence": 0.28,
+      "messages_count": 3
+    },
+    {
+      "test_id": 53,
+      "category": "Customs Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 54,
+      "category": "Social Media Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.14,
+      "messages_count": 3
+    },
+    {
+      "test_id": 55,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 56,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 57,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 58,
+      "category": "Legitimate",
+      "expected": "legitimate",
+      "detected": "legitimate",
+      "correct": true,
+      "confidence": 0.0,
+      "messages_count": 2
+    },
+    {
+      "test_id": 59,
+      "category": "Recharge Scam",
+      "expected": "scam",
+      "detected": "legitimate",
+      "correct": false,
+      "confidence": 0.14,
+      "messages_count": 2
+    },
+    {
+      "test_id": 60,
+      "category": "SIM Scam",
+      "expected": "scam",
+      "detected": "scam",
+      "correct": true,
+      "confidence": 0.33,
+      "messages_count": 3
+    }
+  ],
+  "timestamp": "2026-02-01T13:33:06.300310"
+}

@@ -1,9 +1,10 @@
 import asyncio
 from typing import Dict
-from datetime import datetime
-from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks
+from datetime import datetime, timezone
+from fastapi import FastAPI, HTTPException, Depends, Header, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 
 from app.models import (
     HoneypotRequest, 
@@ -53,6 +54,22 @@ async def verify_api_key(x_api_key: str = Header(...)):
     if x_api_key != settings.API_KEY:
         raise HTTPException(status_code=401, detail="Invalid API key")
     return x_api_key
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Custom handler for validation errors to help debug GUVI portal requests."""
+    body = await request.body()
+    logger.error(f"Validation error for request body: {body.decode('utf-8')}")
+    logger.error(f"Validation errors: {exc.errors()}")
+    return JSONResponse(
+        status_code=422,
+        content={
+            "status": "error",
+            "message": "INVALID_REQUEST_BODY",
+            "details": exc.errors(),
+            "body_received": body.decode('utf-8')
+        }
+    )
 
 @app.get("/health")
 async def health_check():
@@ -126,7 +143,7 @@ async def honeypot_endpoint(
             agent_message = Message(
                 sender="user",
                 text=reply,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.now(timezone.utc)
             )
             conversation_state.add_message(agent_message)
             
@@ -166,15 +183,10 @@ async def honeypot_endpoint(
                 conversation_state
             )
         
+        # Return minimal response as per GUVI specification
         return HoneypotResponse(
             status="success",
-            reply=reply,
-            scamDetection={
-                "isScam": detection_result.is_scam,
-                "confidence": detection_result.confidence,
-                "scamType": detection_result.scam_type,
-                "reasoning": detection_result.reasoning[:200] if detection_result.reasoning else None
-            }
+            reply=reply
         )
         
     except Exception as e:

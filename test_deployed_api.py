@@ -9,7 +9,7 @@ import httpx
 from datetime import datetime, timezone
 
 # UPDATE THIS WITH YOUR DEPLOYED URL
-DEPLOYED_URL = "https://your-app-name.onrender.com"  # or .railway.app, etc.
+DEPLOYED_URL = "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com"
 API_KEY = "team_recursives"
 
 async def test_deployed_api():
@@ -133,11 +133,4 @@ async def test_deployed_api():
     print(f"   ❤️  Health Check: GET /health")
 
 if __name__ == "__main__":
-    print("\n⚠️  UPDATE THE DEPLOYED_URL VARIABLE FIRST!")
-    print("   Edit this file and replace 'your-app-name' with your actual app name\n")
-    
-    if "your-app-name" in DEPLOYED_URL:
-        print("❌ Please update DEPLOYED_URL with your actual deployment URL")
-        print("   Example: https://honeypot-api.onrender.com")
-    else:
-        asyncio.run(test_deployed_api())
+    asyncio.run(test_deployed_api())

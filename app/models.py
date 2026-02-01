@@ -1,12 +1,43 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Union
+from pydantic import BaseModel, Field, field_validator
 
 class Message(BaseModel):
     """Represents a single message in the conversation."""
     sender: str = Field(..., description="Message sender: 'scammer' or 'user'")
     text: str = Field(..., description="Message content")
-    timestamp: datetime = Field(..., description="Message timestamp in ISO-8601 format")
+    timestamp: Union[datetime, str] = Field(..., description="Message timestamp in ISO-8601 format")
+    
+    class Config:
+        extra = "allow"  # Allow any extra fields GUVI might send
+    
+    @field_validator('timestamp', mode='before')
+    @classmethod
+    def parse_timestamp(cls, v):
+        """Flexible timestamp parsing to accept multiple formats."""
+        if isinstance(v, datetime):
+            return v
+        if isinstance(v, str):
+            # Try parsing with various formats
+            formats = [
+                "%Y-%m-%dT%H:%M:%S.%fZ",
+                "%Y-%m-%dT%H:%M:%SZ",
+                "%Y-%m-%dT%H:%M:%S",
+                "%Y-%m-%dT%H:%M:%S.%f",
+                "%Y-%m-%d %H:%M:%S",
+            ]
+            for fmt in formats:
+                try:
+                    return datetime.strptime(v, fmt)
+                except ValueError:
+                    continue
+            # If none work, try ISO format parsing
+            try:
+                return datetime.fromisoformat(v.replace('Z', '+00:00'))
+            except:
+                pass
+        # If all parsing fails, use current time
+        return datetime.utcnow()
 
 class Metadata(BaseModel):
     """Message metadata."""
@@ -18,14 +49,23 @@ class HoneypotRequest(BaseModel):
     """Request model for honeypot API."""
     sessionId: str = Field(..., description="Unique session identifier")
     message: Message = Field(..., description="Latest incoming message")
-    conversationHistory: List[Message] = Field(default=[], description="Previous messages in conversation")
+    conversationHistory: Optional[List[Message]] = Field(default_factory=list, description="Previous messages in conversation")
     metadata: Optional[Metadata] = Field(None, description="Message metadata")
+    
+    class Config:
+        # Allow extra fields that GUVI portal might send
+        extra = "allow"
+        # Be flexible with field names
+        populate_by_name = True
 
 class HoneypotResponse(BaseModel):
-    """Response model for honeypot API."""
+    """Response model for honeypot API - STRICT format as per GUVI specification."""
     status: str = Field(..., description="Response status")
     reply: str = Field(..., description="Agent's reply message")
-    scamDetection: Optional[Dict[str, Any]] = Field(None, description="Scam detection results")
+    
+    class Config:
+        # Ensure clean JSON output, no extra fields
+        extra = "forbid"
 
 class ExtractedIntelligence(BaseModel):
     """Extracted intelligence from scam conversation."""
