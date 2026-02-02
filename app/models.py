@@ -63,8 +63,16 @@ class HoneypotRequest(BaseModel):
     
     sessionId: str
     message: Message
-    conversationHistory: List[Message] = Field(default_factory=list)  # Optional with default []
+    conversationHistory: Optional[List[Message]] = Field(default_factory=list)  # Optional, handles null
     metadata: Optional[Metadata] = None  # Optional
+    
+    @field_validator('conversationHistory', mode='before')
+    @classmethod
+    def normalize_conversation_history(cls, value):
+        """Convert null to empty list"""
+        if value is None:
+            return []
+        return value
 
 
 class HoneypotResponse(BaseModel):
