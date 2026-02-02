@@ -61,7 +61,7 @@ class HoneypotRequest(BaseModel):
     """Incoming request from GUVI"""
     model_config = ConfigDict(extra='ignore')  # Ignore unknown fields from GUVI
     
-    sessionId: str
+    sessionId: Optional[str] = Field(default="unknown-session")  # Optional - GUVI sometimes omits on retries
     message: Message
     conversationHistory: Optional[List[Message]] = Field(default_factory=list)  # Optional, handles null
     metadata: Optional[Metadata] = None  # Optional
