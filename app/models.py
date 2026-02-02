@@ -11,7 +11,7 @@ class Message(BaseModel):
     
     sender: str  # Will be normalized by validator
     text: str
-    timestamp: Union[str, int, datetime]  # Accept str | int before validation
+    timestamp: Optional[Union[str, int, datetime]] = Field(default_factory=lambda: datetime.now(timezone.utc))  # Auto-fill if missing
     
     @field_validator('sender', mode='before')
     @classmethod
@@ -27,6 +27,10 @@ class Message(BaseModel):
     @classmethod
     def parse_timestamp(cls, value):
         """Parse Unix milliseconds, ISO-8601 string, or datetime object to timezone-aware datetime"""
+        # Auto-fill if missing (GUVI tester sometimes omits this)
+        if value is None:
+            return datetime.now(timezone.utc)
+        
         if isinstance(value, datetime):
             # If already datetime, ensure timezone-aware
             if value.tzinfo is None:

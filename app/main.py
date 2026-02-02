@@ -75,18 +75,12 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests with raw body"""
+    """Log all incoming requests (body logging moved to endpoint after parsing)"""
     logger.info(f"📥 {request.method} {request.url.path} from {request.client.host}")
     logger.info(f"   Headers: {dict(request.headers)}")
     
-    # Log raw request body for debugging GUVI format issues
-    if request.method == "POST":
-        body = await request.body()
-        logger.info(f"🔍 Raw Request Body: {body.decode('utf-8')}")
-        # Important: Store body for later use since it can only be read once
-        async def receive():
-            return {"type": "http.request", "body": body}
-        request._receive = receive
+    # NOTE: Raw body logging removed - causes FastAPI body replay issues on cold start
+    # Body is now logged AFTER successful Pydantic parsing in the endpoint
     
     response = await call_next(request)
     return response
@@ -159,6 +153,9 @@ async def honeypot_endpoint(
     session_id = request.sessionId or "unknown-session"
     current_time = datetime.now(timezone.utc)
     
+    # Safe history handling (GUVI may omit field entirely)
+    conversation_history = request.conversationHistory or []
+    
     # Initialize message count for new session
     if session_id not in message_counts:
         message_counts[session_id] = 0
@@ -166,7 +163,9 @@ async def honeypot_endpoint(
     logger.info(f"\n{'='*80}")
     logger.info(f"📨 New message for session: {session_id}")
     logger.info(f"   Message: {request.message.text}")
-    logger.info(f"   History length: {len(request.conversationHistory)}")
+    logger.info(f"   Timestamp: {request.message.timestamp}")
+    logger.info(f"   History length: {len(conversation_history)}")
+    logger.info(f"   🔍 Parsed Request: sessionId={session_id}, sender={request.message.sender}, text={request.message.text[:50]}...")
     
     # Increment count for scammer message received
     message_counts[session_id] += 1
@@ -233,7 +232,7 @@ async def honeypot_endpoint(
         # ====================================================================
         extracted_intel = intelligence_extractor.extract_from_conversation(
             request.message,
-            request.conversationHistory
+            conversation_history
         )
         
         has_real_intel = intelligence_extractor.has_real_intelligence(extracted_intel)
@@ -310,7 +309,7 @@ async def honeypot_endpoint(
             reply_text = conversation_agent.generate_reply(
                 scammer_message=request.message.text,
                 scam_type=detection_result.scam_type or "unknown",
-                conversation_history=request.conversationHistory
+                conversation_history=conversation_history
             )
         else:
             # Not a scam (or low confidence) - neutral response
