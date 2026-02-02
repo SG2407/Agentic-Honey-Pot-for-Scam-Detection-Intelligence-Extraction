@@ -1,137 +1,165 @@
-# 🕷️ AI-Powered Agentic Honeypot System
+# 🕷️ Agentic Honey-Pot for Scam Detection & Intelligence Extraction
 
-> **Delhi Hackathon 2026** - An intelligent honeypot system that detects, engages, and extracts intelligence from scammers using advanced AI agents
+> **GUVI Hackathon 2026** - An AI-powered honeypot system that detects scam intent, autonomously engages scammers, and extracts actionable intelligence without revealing detection.
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
 [![Groq](https://img.shields.io/badge/Groq-AI%20Powered-orange.svg)](https://groq.com)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Deployed](https://img.shields.io/badge/Deployed-Render-purple.svg)](https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com)
 
-## 🎯 Project Overview
+## 🎯 Problem Statement
 
-This AI-powered honeypot system represents a cutting-edge approach to combating cybercrime by:
-- **Detecting scam attempts** using hybrid pattern matching + AI analysis
-- **Autonomously engaging scammers** with multiple AI personas to keep them interested  
-- **Extracting valuable intelligence** about scammer operations while protecting privacy
-- **Providing actionable insights** to law enforcement and security teams
+Online scams (bank fraud, UPI fraud, phishing, fake offers) are becoming increasingly adaptive. Scammers change tactics based on user responses, making traditional detection ineffective. This system uses an **Agentic Honey-Pot** approach - an AI-powered system that detects scam intent and autonomously engages scammers to extract intelligence without revealing detection.
 
-### 🏆 Key Innovations
-- **Hybrid Detection Engine**: Combines regex patterns with Groq AI for 95%+ accuracy
-- **Multi-Persona AI Agents**: Different conversation styles for various scam types
-- **Privacy-Safe Intelligence**: Masks sensitive data while preserving investigative value
-- **Production-Ready Architecture**: FastAPI backend with comprehensive error handling
+## 🚀 Live Deployment
+
+- **Endpoint**: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/honeypot`
+- **API Key**: `team_recursives`
+- **Health Check**: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/health`
 
 ## ✨ Features
 
-### 🔍 **Advanced Scam Detection**
-- Pattern-based detection for 15+ common scam types
-- AI-powered semantic analysis using Groq's Llama models
-- Confidence scoring and scam type classification
-- Real-time threat assessment
+### 🔍 **Hybrid Scam Detection**
+- **Hard Rules First**: Regex patterns for 20+ scam indicators (urgent, verify, OTP, blocked, suspicious URLs)
+- **AI-Powered Analysis**: Groq Llama 3.3 70B for semantic understanding
+- **Confidence Scoring**: 0.0-1.0 scale with 0.7 threshold for scam confirmation
+- **Scam Type Classification**: Financial threat, credential phishing, prize scam, tech support, etc.
 
-### 🤖 **Intelligent Conversation Agents**
-- **Vulnerable Persona**: Acts concerned and easily manipulated
-- **Curious Persona**: Asks questions to extract more information  
-- **Cautious Persona**: Shows hesitation to build trust
-- Context-aware responses based on conversation history
+### 🤖 **Autonomous AI Agent**
+- **Multi-Persona Engagement**: 
+  - Confused Elderly (slow to understand, asks for clarification)
+  - Worried Parent (concerned about family, emotional responses)
+  - Busy Professional (distracted, provides info in fragments)
+- **Context-Aware Responses**: Uses conversation history for natural flow
+- **Never Reveals Detection**: Maintains human-like persona throughout
 
 ### 📊 **Intelligence Extraction**
-- Automatic extraction of phone numbers, emails, and URLs
-- Bank account and UPI ID detection with privacy masking
-- Cryptocurrency wallet identification
-- Phishing link analysis and documentation
+Automatically extracts and tracks:
+- 🏦 Bank Account Numbers (with privacy masking)
+- 💳 UPI IDs (e.g., scammer@upi)
+- 📞 Phone Numbers (international format support)
+- 🔗 Phishing Links (malicious URLs)
+- 🔑 Suspicious Keywords (urgent, verify, OTP, blocked, click here, etc.)
 
-### 🛡️ **Security & Privacy**
-- API key authentication for all endpoints
-- Data masking to protect extracted sensitive information
-- Structured logging with no PII exposure
-- Rate limiting and input validation
+### ⏱️ **Smart Session Management**
+- **No Timeout for Non-Scam**: Sessions stay open indefinitely for non-scam messages
+- **Timeout Only for Scams**: 10-second timeout after scam detection
+- **Callback Triggers**: Sends final report when intelligence extracted OR timeout reached
+- **Session Tracking**: Prevents duplicate callbacks for closed sessions
 
-### 🔄 **Integration & Monitoring**
-- REST API with comprehensive documentation
-- Callback service for external system integration
-- Health monitoring and system status endpoints
-- Comprehensive testing suite with realistic scenarios
+### 🛡️ **Robust Input Handling**
+- ✅ Flexible timestamp parsing (Unix ms, ISO-8601, numeric strings)
+- ✅ Optional fields (conversationHistory, metadata)
+- ✅ Case-insensitive sender normalization ("Scammer" → "scammer")
+- ✅ Extra field tolerance (extra='ignore')
+- ✅ Multiple API key header support (x-api-key, X-API-KEY, Authorization)
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Client/SMS    │────│   FastAPI Server │────│   Groq AI API   │
-│   Gateway       │    │                  │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                    ┌──────────────────┐
-                    │ Scam Detection   │
-                    │ Engine           │
-                    └──────────────────┘
-                                │
-                    ┌──────────────────┐
-                    │ Conversation     │
-                    │ Agent            │
-                    └──────────────────┘
-                                │
-                    ┌──────────────────┐
-                    │ Intelligence     │
-                    │ Extractor        │
-                    └──────────────────┘
-                                │
-                    ┌──────────────────┐
-                    │ Callback         │
-                    │ Service          │
-                    └──────────────────┘
+┌─────────────────┐
+│  GUVI Platform  │  Sends suspected scam messages
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────┐
+│           FastAPI Server (main.py)              │
+│  • Raw request logging                          │
+│  • API key verification (flexible headers)      │
+│  • Pydantic validation (robust input handling)  │
+└────────┬────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────┐
+│        Scam Detector (scam_detector.py)         │
+│  1. Hard rules check (regex patterns)           │
+│  2. AI analysis (Groq Llama 3.3 70B)            │
+│  → Returns: is_scam, confidence, type           │
+└────────┬────────────────────────────────────────┘
+         │
+         ├─────────────────┬──────────────────────┐
+         │                 │                      │
+    [Non-Scam]        [Scam Detected]            │
+         │                 │                      │
+         ▼                 ▼                      ▼
+  ┌──────────┐    ┌────────────────┐    ┌────────────────┐
+  │ Neutral  │    │ Start Timeout  │    │ Intelligence   │
+  │ Reply    │    │ Tracking (10s) │    │ Extractor      │
+  │          │    │                │    │ (extract data) │
+  └──────────┘    └────────────────┘    └────────┬───────┘
+         │                 │                      │
+         │                 ▼                      │
+         │        ┌─────────────────┐             │
+         │        │ Conversation    │             │
+         │        │ Agent (AI)      │             │
+         │        │ • Multi-persona │             │
+         │        │ • Context-aware │             │
+         │        └────────┬────────┘             │
+         │                 │                      │
+         │                 │    [Intel Found      │
+         │                 │     OR Timeout]      │
+         │                 │         │            │
+         │                 ▼         ▼            ▼
+         │        ┌──────────────────────────────────┐
+         │        │   Callback Service               │
+         │        │   POST to GUVI with results      │
+         │        │   • sessionId                    │
+         │        │   • scamDetected                 │
+         │        │   • totalMessagesExchanged       │
+         │        │   • extractedIntelligence (5 fields) │
+         │        │   • agentNotes                   │
+         │        └────────┬─────────────────────────┘
+         │                 │
+         ▼                 ▼
+  ┌──────────────────────────────┐
+  │  Return 200 OK with reply    │
+  │  (neutral or engagement text) │
+  └───────────────────────────────┘
 ```
 
 ## 📁 Project Structure
 
 ```
 Delhi_Hackathon/
-├── 🚀 app/
-│   ├── main.py                     # FastAPI application & API endpoints
-│   ├── models.py                   # Pydantic models for request/response
+├── app/
+│   ├── main.py                      # FastAPI app & /honeypot endpoint
+│   ├── models.py                    # Pydantic models (robust validation)
 │   ├── agents/
-│   │   ├── scam_detector.py        # Hybrid scam detection engine
-│   │   └── conversation_agent.py   # Multi-persona AI conversation agent
+│   │   ├── scam_detector.py         # Hard rules + AI detection
+│   │   └── conversation_agent.py    # Multi-persona AI agent
 │   ├── services/
-│   │   ├── intelligence_extractor.py  # Data extraction & privacy masking
-│   │   └── callback_service.py     # External system integration
+│   │   ├── intelligence_extractor.py  # Extract bank/UPI/phone/links
+│   │   └── callback_service.py      # Send results to GUVI
 │   └── utils/
-│       └── logger.py              # Structured logging configuration
-├── ⚙️ config/
-│   └── settings.py                # Environment-based configuration
-├── 🧪 tests/
-│   └── test_honeypot.py          # Comprehensive test suite
-├── 🎯 Demo & Testing/
-│   ├── demo.py                   # Full system demonstration
-│   ├── test_quick.py            # Quick functionality test
-│   └── start_server.sh          # Server startup script
-├── 📋 Configuration/
-│   ├── .env.example            # Environment variables template
-│   ├── requirements.txt        # Python dependencies
-│   └── .gitignore             # Git exclusion rules
-└── 📖 Documentation/
-    ├── README.md              # This file
-    ├── PROJECT_GUIDE.md       # Development guide
-    └── Problem_Statement.txt  # Original hackathon requirements
+│       └── logger.py                # Structured logging
+├── config/
+│   └── settings.py                  # Environment configuration
+├── tests/
+│   ├── test_honeypot.py
+│   ├── test_guvi_validation.py      # GUVI format compliance tests
+│   └── test_minimal_fixes.py        # Robustness validation
+├── demo.py                          # Full system demo
+├── requirements.txt                 # Python dependencies
+├── render.yaml                      # Render deployment config
+└── README.md                        # This file
 ```
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python 3.11+** (required for latest asyncio features)
-- **Git** for version control
-- **Groq API Key** (free from [console.groq.com](https://console.groq.com))
+- Python 3.11+
+- Groq API Key (free from [console.groq.com](https://console.groq.com))
 
 ### 1. Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/Delhi_Hackathon_AI_Honeypot.git
-cd Delhi_Hackathon_AI_Honeypot
+# Clone repository
+git clone https://github.com/SG2407/Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction.git
+cd Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction
 
 # Create virtual environment
-python3.11 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -139,287 +167,251 @@ pip install -r requirements.txt
 
 ### 2. Configuration
 
-```bash
-# Copy environment template
-cp .env.example .env
-
-# Edit configuration (add your API keys)
-nano .env  # or your preferred editor
-```
-
-**Required Environment Variables:**
+Create `.env` file:
 ```env
 # API Configuration
-API_KEY="your_secure_api_key_here"
+API_KEY=team_recursives
 
 # Groq Configuration  
-GROQ_API_KEY="gsk_your_groq_api_key_here"
-GROQ_MODEL="llama-3.3-70b-versatile"
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=llama-3.3-70b-versatile
 
-# Application Settings
+# Callback Configuration
+CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
+MESSAGE_TIMEOUT_SECONDS=10
+
+# Environment
 ENVIRONMENT=development
 LOG_LEVEL=INFO
 ```
 
-### 3. Launch & Test
+### 3. Run Locally
 
 ```bash
-# Start the server
+# Start server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# In a new terminal, test the system
-python test_quick.py
-
-# Run full demonstration
+# Test with demo
 python demo.py
 ```
 
 ## 📡 API Reference
 
 ### Authentication
-All API endpoints require authentication via the `x-api-key` header:
 ```http
-x-api-key: your_api_key_here
+x-api-key: team_recursives
+Content-Type: application/json
 ```
 
-### Core Endpoint: `/honeypot`
+### POST `/honeypot`
 
-**POST** `/honeypot` - Process scam messages and generate responses
-
-**Request Body:**
+**Request:**
 ```json
 {
-  "sessionId": "unique-session-identifier",
+  "sessionId": "unique-session-id",
   "message": {
     "sender": "scammer",
-    "text": "URGENT: Your bank account will be blocked today. Click here to verify: https://fake-bank.com/verify",
-    "timestamp": "2026-01-31T10:30:00Z"
+    "text": "Your bank account will be blocked. Verify now.",
+    "timestamp": "2026-02-01T10:15:30Z"
   },
-  "conversationHistory": [
-    {
-      "sender": "scammer", 
-      "text": "Previous message",
-      "timestamp": "2026-01-31T10:25:00Z"
-    }
-  ],
+  "conversationHistory": [],
   "metadata": {
     "channel": "SMS",
-    "language": "English", 
+    "language": "English",
     "locale": "IN"
   }
-}
 ```
 
 **Response:**
 ```json
 {
   "status": "success",
-  "reply": "Oh no! What do I need to do to keep my account safe? Should I click that link?",
-  "scamDetection": {
-    "isScam": true,
-    "confidence": 0.95,
-    "scamType": "banking_fraud", 
-    "riskLevel": "HIGH"
-  },
-  "extractedIntelligence": {
-    "phoneNumbers": ["91XXXXXXXXXX"],
-    "urls": ["https://fake-bank.com/verify"],
-    "suspiciousKeywords": ["urgent", "verify", "blocked"]
-  },
-  "conversationContext": {
-    "persona": "vulnerable",
-    "turnCount": 3,
-    "engagementLevel": "high"
-  }
+  "reply": "Why will my account be blocked?"
 }
 ```
 
-### Health Check: `/health`
-
-**GET** `/health` - System status and health metrics
+### GET `/health`
 
 **Response:**
 ```json
 {
   "status": "healthy",
-  "timestamp": "2026-01-31T10:30:00Z",
-  "environment": "development",
-  "version": "1.0.0",
-  "dependencies": {
-    "groq_api": "connected",
-    "database": "healthy"
-  }
+  "service": "Agentic Honey-Pot",
+  "version": "2.0.0",
+  "timestamp": "2026-02-01T10:30:00Z"
 }
 ```
 
-## 🧪 Testing & Validation
+## 🔄 How It Works
 
-### Quick System Test
-```bash
-python test_quick.py
-```
+### 1. **Message Received**
+- GUVI sends POST to `/honeypot`
+- System logs raw request for debugging
+- Pydantic validates with robust error handling
 
-### Full Demonstration
+### 2. **Scam Detection**
+- **Hard Rules Check**: Regex patterns for urgent, verify, OTP, blocked, phishing URLs
+- **AI Analysis**: If hard rules don't trigger, Groq AI analyzes semantically
+- **Result**: `is_scam`, `confidence` (0-1), `scam_type`, `reasoning`
+
+### 3. **Session Management**
+- **Non-Scam**: No timeout, session stays open, neutral reply sent
+- **Scam Detected**: Start 10s timeout tracking, engage with AI agent
+
+### 4. **Intelligence Extraction**
+- Extract from current message + entire conversation history
+- Find: bank accounts, UPI IDs, phone numbers, phishing links, keywords
+- All 5 fields always present (empty arrays if nothing found)
+
+### 5. **Callback Decision**
+Send callback to GUVI when:
+- ✅ Real intelligence extracted (non-empty data found)
+- ✅ Timeout reached (10s since last message in scam session)
+
+### 6. **Return Response**
+- Always 200 OK (never HTTP errors)
+- Closed sessions: Neutral acknowledgment
+- Active sessions: AI-generated engagement or neutral reply
+
+## 🧪 Testing
+
+### Run Tests
 ```bash
+# GUVI format compliance
+python test_guvi_validation.py
+
+# Minimal fixes validation
+python test_minimal_fixes.py
+
+# Full demo
 python demo.py
 ```
-This runs 3 realistic scam scenarios:
-- 🏦 **Banking threat**: "Account will be blocked" scam
-- 🎰 **Fake lottery**: Prize claiming scam  
-- 💳 **Payment fraud**: UPI refund scam
 
-### Manual API Testing
+### Manual Testing
 ```bash
-# Test with curl
-curl -X POST "http://localhost:8000/honeypot" \
-     -H "x-api-key: team_recursives" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "sessionId": "test-123",
-       "message": {
-         "sender": "scammer",
-         "text": "You won $10000! Call +1234567890 now!",
-         "timestamp": "2026-01-31T10:30:00Z"
-       },
-       "conversationHistory": [],
-       "metadata": {"channel": "SMS", "language": "English", "locale": "US"}
-     }'
+curl -X POST "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/honeypot" \
+  -H "x-api-key: team_recursives" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sessionId": "test-123",
+    "message": {
+      "sender": "scammer",
+      "text": "Your account will be blocked. Click here to verify.",
+      "timestamp": "2026-02-01T10:15:30Z"
+    },
+    "conversationHistory": []
+  }'
 ```
 
-## 🔧 Configuration Options
+## 🛠️ Technical Details
+
+### Key Technologies
+- **FastAPI**: Modern async web framework
+- **Pydantic V2**: Robust data validation with `model_dump()`, `ConfigDict`
+- **Groq API**: Llama 3.3 70B model for AI responses
+- **httpx**: Async HTTP client for callbacks
+- **Python 3.11+**: Latest async/await features
+
+### Robustness Features
+✅ **Flexible Input Handling**:
+- Timestamp: Unix ms, ISO-8601, numeric strings
+- Sender: Case-insensitive, auto-normalized
+- conversationHistory: Optional with `Field(default_factory=list)`
+- metadata: All fields optional
+- Extra fields: Ignored via `extra='ignore'`
+
+✅ **Multi-Header API Key Support**:
+- `x-api-key`
+- `X-API-KEY`
+- `Authorization`
+- Query parameter `api_key`
+
+✅ **Smart Session Tracking**:
+- In-memory dictionaries (callback_sent_sessions, last_message_time)
+- Prevents duplicate callbacks
+- Timeout only for scam sessions
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `API_KEY` | `"team_recursives"` | Authentication key for API access |
-| `GROQ_API_KEY` | *Required* | Your Groq API key for AI functionality |
-| `GROQ_MODEL` | `"llama-3.3-70b-versatile"` | Groq model for AI responses |
-| `ENVIRONMENT` | `development` | Deployment environment |
-| `LOG_LEVEL` | `INFO` | Logging verbosity level |
-| `MAX_CONVERSATION_TURNS` | `20` | Maximum turns per conversation |
-| `SCAM_CONFIDENCE_THRESHOLD` | `0.7` | Minimum confidence for scam detection |
-| `GUVI_CALLBACK_URL` | *Set* | Hackathon callback endpoint |
+| `API_KEY` | `team_recursives` | API authentication key |
+| `GROQ_API_KEY` | *Required* | Groq API key for AI |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | AI model |
+| `CALLBACK_URL` | GUVI endpoint | Final result callback URL |
+| `MESSAGE_TIMEOUT_SECONDS` | `10` | Timeout for scam sessions |
+| `ENVIRONMENT` | `development` | Environment mode |
+| `LOG_LEVEL` | `INFO` | Logging level |
 
-### Persona Configuration
-The system automatically selects conversation personas based on scam type:
-- **Banking/Finance scams** → Vulnerable persona (worried about money)
-- **Prize/Lottery scams** → Curious persona (interested in rewards)  
-- **Tech support scams** → Cautious persona (tech-hesitant)
+## 📊 GUVI Compliance
 
-## 📊 Monitoring & Logs
+### ✅ All Requirements Met
+- [x] Detect scam intent
+- [x] Activate autonomous AI Agent
+- [x] Maintain believable human-like persona
+- [x] Handle multi-turn conversations
+- [x] Extract scam-related intelligence
+- [x] Return structured JSON response
+- [x] Secure access using API key
+- [x] Send final result callback to GUVI
 
-### Structured Logging
-All system events are logged in JSON format:
+### Callback Format
 ```json
 {
-  "asctime": "2026-01-31 10:30:00",
-  "name": "app.agents.scam_detector", 
-  "levelname": "INFO",
-  "message": "Scam detection completed",
-  "event_type": "scam_detection",
-  "session_id": "demo-123",
-  "is_scam": true,
-  "confidence": 0.95,
-  "scam_type": "banking_fraud"
+  "sessionId": "xxx",
+  "scamDetected": true,
+  "totalMessagesExchanged": 5,
+  "extractedIntelligence": {
+    "bankAccounts": [],
+    "upiIds": ["scammer@upi"],
+    "phishingLinks": ["http://evil.com"],
+    "phoneNumbers": ["+91XXXXXXXXXX"],
+    "suspiciousKeywords": ["urgent", "verify", "blocked"]
+  },
+  "agentNotes": "Scammer used urgency tactics"
 }
 ```
 
-### Key Metrics to Monitor
-- **Detection Accuracy**: Scam vs legitimate message classification
-- **Response Quality**: AI conversation coherence and engagement
-- **Intelligence Yield**: Data points extracted per conversation
-- **System Performance**: Response time and error rates
-
-## 🤝 Contributing
-
-### Development Setup
-```bash
-# Install development dependencies
-pip install -r requirements.txt
-
-# Run tests
-python -m pytest tests/ -v
-
-# Code formatting
-black app/ config/ tests/
-isort app/ config/ tests/
-
-# Type checking
-mypy app/ config/
-```
-
-### Contribution Guidelines
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Test** your changes thoroughly
-4. **Commit** with descriptive messages (`git commit -m 'Add amazing feature'`)
-5. **Push** to your branch (`git push origin feature/amazing-feature`)
-6. **Open** a Pull Request
-
-## 🔒 Security Considerations
-
-### Data Privacy
-- ✅ **No PII Storage**: Sensitive data is masked immediately after extraction
-- ✅ **Secure Logging**: Logs contain no personal information
-- ✅ **API Authentication**: All endpoints require valid API keys
-- ✅ **Input Validation**: All inputs are sanitized and validated
-
-### Deployment Security
-- 🔐 Use environment variables for all secrets
-- 🛡️ Deploy behind reverse proxy (nginx/traefik)
-- 🔒 Enable HTTPS in production
-- 📊 Monitor for suspicious access patterns
-
-## 📈 Performance & Scalability
-
-### System Requirements
-- **CPU**: 2+ cores recommended for concurrent processing
-- **RAM**: 4GB+ for AI model inference
-- **Network**: Stable internet for Groq API calls
-- **Storage**: 1GB for logs and temporary data
-
-### Scaling Considerations
-- **Horizontal**: Multiple server instances with load balancer
-- **Caching**: Redis for conversation state and frequent queries
-- **Database**: PostgreSQL for persistent intelligence storage
-- **Monitoring**: Prometheus + Grafana for production metrics
-
 ## 🐛 Troubleshooting
 
-### Common Issues
+### No Logs from GUVI?
+1. Check endpoint URL: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/honeypot`
+2. Verify API key: `team_recursives`
+3. Check Render logs for incoming requests
+4. Test manually with curl/Postman
 
-**Error: "Invalid API key"**
-```bash
-# Check your .env file
-cat .env | grep API_KEY
-# Ensure test script uses same key as .env
-```
+### INVALID_REQUEST_BODY Error?
+- ✅ Fixed: All 5 intelligence fields always present
+- ✅ Fixed: conversationHistory uses `Field(default_factory=list)`
+- ✅ Fixed: Timestamp handles str/int/datetime
+- ✅ Fixed: Sender normalized (lowercase, trimmed)
+- ✅ Fixed: Metadata fields all optional
 
-**Error: "Model decommissioned"**
+### Server Not Responding?
 ```bash
-# Update to supported model in .env
-GROQ_MODEL="llama-3.3-70b-versatile"
-```
-
-**Error: "Connection refused"**
-```bash
-# Ensure server is running
+# Check if port is in use
 lsof -i :8000
-# Restart if needed
+
+# Restart server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Debug Mode
-```bash
-# Enable debug logging
-export LOG_LEVEL=DEBUG
-python -m uvicorn app.main:app --reload --log-level debug
-```
+## 📝 License
 
-## 📜 License
+MIT License - See [LICENSE](LICENSE) for details
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+---
+
+## 🙏 Acknowledgments
+
+- **GUVI Hackathon 2026** for the challenge
+- **Groq** for fast AI inference
+- **FastAPI** for excellent async framework
+- **Render** for reliable hosting
+
+---
+
+**Built with ❤️ by Team Recursives**
 
 ## 👥 Team & Acknowledgments
 
