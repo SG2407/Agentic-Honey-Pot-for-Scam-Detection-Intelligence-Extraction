@@ -4,7 +4,7 @@ import os
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Set, Dict
-from fastapi import FastAPI, HTTPException, Header, Query, Request
+from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
@@ -103,7 +103,7 @@ async def verify_api_key(
 @app.post("/honeypot", response_model=HoneypotResponse)
 async def honeypot_endpoint(
     request: HoneypotRequest,
-    api_key: str = Header(None, alias="x-api-key")
+    api_key: str = Depends(verify_api_key)
 ):
     """
     Main honeypot endpoint - Single execution flow:

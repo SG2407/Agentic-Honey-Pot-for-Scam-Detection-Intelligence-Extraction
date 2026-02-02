@@ -9,9 +9,19 @@ class Message(BaseModel):
     """Message model with flexible timestamp parsing (Unix ms, ISO-8601, datetime)"""
     model_config = ConfigDict(extra='ignore')  # Ignore unknown fields from GUVI
     
-    sender: str = Field(..., pattern="^(scammer|user)$")  # Only 'scammer' or 'user' allowed
+    sender: str  # Will be normalized by validator
     text: str
     timestamp: Union[str, int, datetime]  # Accept str | int before validation
+    
+    @field_validator('sender', mode='before')
+    @classmethod
+    def normalize_sender(cls, value):
+        """Normalize sender to lowercase and trim whitespace (accepts Scammer, scammer, user, User)"""
+        if isinstance(value, str):
+            value = value.strip().lower()
+        if value not in {"scammer", "user"}:
+            raise ValueError(f"Invalid sender: {value}. Must be 'scammer' or 'user'")
+        return value
     
     @field_validator('timestamp', mode='before')
     @classmethod
@@ -26,6 +36,9 @@ class Message(BaseModel):
             # Unix milliseconds from GUVI (e.g., 1769938742773)
             return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
         elif isinstance(value, str):
+            # Handle numeric strings (e.g., "1738408530000")
+            if value.isdigit():
+                return datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc)
             # ISO-8601 string (e.g., "2026-01-21T10:15:30Z")
             dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
             if dt.tzinfo is None:
@@ -39,9 +52,9 @@ class Metadata(BaseModel):
     """Metadata about the message"""
     model_config = ConfigDict(extra='ignore')  # Ignore unknown fields from GUVI
     
-    channel: str
-    language: str
-    locale: str
+    channel: Optional[str] = None
+    language: Optional[str] = None
+    locale: Optional[str] = None
 
 
 class HoneypotRequest(BaseModel):
@@ -50,7 +63,7 @@ class HoneypotRequest(BaseModel):
     
     sessionId: str
     message: Message
-    conversationHistory: List[Message] = []  # Optional with default []
+    conversationHistory: List[Message] = Field(default_factory=list)  # Optional with default []
     metadata: Optional[Metadata] = None  # Optional
 
 
