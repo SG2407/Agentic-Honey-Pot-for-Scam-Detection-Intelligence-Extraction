@@ -150,10 +150,12 @@ async def honeypot_endpoint(
         # ====================================================================
         if session_id in callback_sent_sessions:
             logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
-            logger.warning(f"   ❌ RETURNING 410 GONE - Session was previously closed")
-            return JSONResponse(
-                status_code=410,
-                content={"status": "success"}
+            logger.warning(f"   ✅ RETURNING 200 OK with neutral response - Session was previously closed")
+            # Return 200 OK with neutral acknowledgment instead of 410
+            neutral_reply = conversation_agent.generate_neutral_reply()
+            return HoneypotResponse(
+                status="success",
+                reply=neutral_reply
             )
         
         # ====================================================================
@@ -263,11 +265,12 @@ async def honeypot_endpoint(
             else:
                 logger.error(f"❌ Callback failed for session {session_id}")
             
-            # Return 410 Gone (session closed)
-            logger.info(f"   🚪 RETURNING 410 GONE - Session officially closed after callback")
-            return JSONResponse(
-                status_code=410,
-                content={"status": "success"}
+            # Return 200 OK with neutral response (session closed)
+            logger.info(f"   ✅ RETURNING 200 OK with neutral response - Session officially closed after callback")
+            neutral_reply = conversation_agent.generate_neutral_reply()
+            return HoneypotResponse(
+                status="success",
+                reply=neutral_reply
             )
         
         # ====================================================================
