@@ -50,14 +50,22 @@ app = FastAPI(
 
 
 # ============================================================================
-# GLOBAL EXCEPTION HANDLER - Always return 200 OK
+# GLOBAL EXCEPTION HANDLERS - Always return 200 OK
 # ============================================================================
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """CRITICAL: Catch all validation errors and return 200 OK to prevent INVALID_REQUEST_BODY"""
     logger.error(f"🚨 Validation error caught (returning 200 OK anyway): {exc}")
-    logger.error(f"   Request body: {await request.body()}")
+    logger.error(f"   Request URL: {request.url}")
+    logger.error(f"   Validation errors: {exc.errors()}")
+    
+    # Try to log request body
+    try:
+        body = await request.body()
+        logger.error(f"   Request body: {body.decode('utf-8')}")
+    except Exception as e:
+        logger.error(f"   Could not read request body: {e}")
     
     # Always return 200 OK with neutral reply - GUVI penalizes ANY non-200 response
     return JSONResponse(
@@ -65,6 +73,34 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={
             "status": "success",
             "reply": "Okay, I understand."
+        }
+    )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch ALL other exceptions and return 200 OK"""
+    logger.error(f"🚨 GLOBAL EXCEPTION CAUGHT: {type(exc).__name__}: {exc}")
+    logger.error(f"   Request URL: {request.url}")
+    logger.error(f"   Request method: {request.method}")
+    
+    # Try to log request body if possible
+    try:
+        body = await request.body()
+        logger.error(f"   Request body: {body.decode('utf-8')}")
+    except Exception as body_error:
+        logger.error(f"   Could not read request body: {body_error}")
+    
+    # Log full exception traceback
+    import traceback
+    logger.error(f"   Traceback: {traceback.format_exc()}")
+    
+    # ALWAYS return 200 OK
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "reply": "I understand. Thank you."
         }
     )
 
@@ -333,7 +369,14 @@ async def honeypot_endpoint(
     
     except Exception as e:
         logger.error(f"❌ Unexpected error in honeypot endpoint: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+        # Return 200 OK even on errors
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "reply": "I see. Thank you for the information."
+            }
+        )
 
 
 # ============================================================================
