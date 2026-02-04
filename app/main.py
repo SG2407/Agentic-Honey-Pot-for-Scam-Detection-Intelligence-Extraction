@@ -9,6 +9,8 @@ from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.datastructures import UploadFile
+from anyio import EndOfStream
 
 from app.models import HoneypotRequest, HoneypotResponse, CallbackPayload
 from app.scam_detector import ScamDetector
@@ -163,31 +165,112 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # ============================================================================
-# MIDDLEWARE - Global Request Logging
+# LAYER 2: ASGI MIDDLEWARE - Transport-Level Error Protection
+# ============================================================================
+
+@app.middleware("http")
+async def transport_error_protection_middleware(request: Request, call_next):
+    """
+    LAYER 2: Catch transport and ASGI-level errors during request processing
+    
+    This catches errors that occur DURING request/response processing:
+    - Client disconnections
+    - Stream read/write failures
+    - Chunked transfer encoding errors
+    - Connection drops mid-request
+    - Network timeout errors
+    - ASGI protocol violations
+    
+    This runs BEFORE endpoint handlers and catches errors that global exception
+    handlers might miss because they happen during the request/response lifecycle.
+    """
+    try:
+        # Log incoming request
+        client_ip = request.client.host if request.client else "unknown"
+        forwarded_for = request.headers.get("x-forwarded-for", "None")
+        user_agent = request.headers.get("user-agent", "Unknown")
+        
+        logger.info(f"📥 {request.method} {request.url.path}")
+        logger.info(f"   Client IP: {client_ip}")
+        logger.info(f"   X-Forwarded-For: {forwarded_for}")
+        logger.info(f"   User-Agent: {user_agent}")
+        logger.info(f"   Headers: {dict(request.headers)}")
+        
+        # Process request with transport-level error protection
+        try:
+            response = await call_next(request)
+            logger.info(f"📤 Response status: {response.status_code}")
+            return response
+            
+        except ConnectionError as e:
+            # Client disconnected, connection reset, broken pipe
+            logger.error(f"🚨 LAYER 2 - ConnectionError: {e}")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "reply": "Thank you for your message."
+                }
+            )
+            
+        except EndOfStream as e:
+            # Stream ended unexpectedly (chunked transfer, incomplete data)
+            logger.error(f"🚨 LAYER 2 - EndOfStream: {e}")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "reply": "I received your request."
+                }
+            )
+            
+        except TimeoutError as e:
+            # Request processing timeout
+            logger.error(f"🚨 LAYER 2 - TimeoutError: {e}")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "reply": "I understand."
+                }
+            )
+            
+        except OSError as e:
+            # Low-level OS errors (network, file descriptors, etc.)
+            logger.error(f"🚨 LAYER 2 - OSError: {e}")
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "reply": "Thank you for contacting me."
+                }
+            )
+            
+    except Exception as e:
+        # Absolute last safety net for any middleware-level error
+        logger.error(f"🚨 LAYER 2 - MIDDLEWARE EXCEPTION: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(f"   Traceback: {traceback.format_exc()}")
+        
+        # Always return 200 OK
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "reply": "I appreciate you reaching out."
+            }
+        )
+
+
+# ============================================================================
+# LEGACY MIDDLEWARE - Kept for compatibility (now redundant with Layer 2)
 # ============================================================================
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    """Log all incoming requests (body logging moved to endpoint after parsing)"""
-    client_ip = request.client.host
-    forwarded_for = request.headers.get("x-forwarded-for", "None")
-    user_agent = request.headers.get("user-agent", "Unknown")
-    
-    logger.info(f"📥 {request.method} {request.url.path}")
-    logger.info(f"   Client IP: {client_ip}")
-    logger.info(f"   X-Forwarded-For: {forwarded_for}")
-    logger.info(f"   User-Agent: {user_agent}")
-    logger.info(f"   Headers: {dict(request.headers)}")
-    
-    # NOTE: Raw body logging removed - causes FastAPI body replay issues on cold start
-    # Body is now logged AFTER successful Pydantic parsing in the endpoint
-    
-    response = await call_next(request)
-    
-    # Log response status
-    logger.info(f"📤 Response status: {response.status_code}")
-    
-    return response
+    """Legacy logging middleware - functionality moved to transport_error_protection_middleware"""
+    # This is now a passthrough since logging moved to the new middleware above
+    return await call_next(request)
 
 
 # ============================================================================
