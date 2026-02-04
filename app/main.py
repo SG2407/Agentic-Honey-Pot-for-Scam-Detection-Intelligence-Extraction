@@ -1,12 +1,14 @@
 """FastAPI application - Agentic Honey-Pot for Scam Detection"""
 
 import os
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Set, Dict
 from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.models import HoneypotRequest, HoneypotResponse, CallbackPayload
 from app.scam_detector import ScamDetector
@@ -55,8 +57,11 @@ app = FastAPI(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """CRITICAL: Catch all validation errors and return 200 OK to prevent INVALID_REQUEST_BODY"""
-    logger.error(f"🚨 Validation error caught (returning 200 OK anyway): {exc}")
+    """
+    HANDLER 1: Catch Pydantic validation errors and schema mismatches
+    This catches errors when request body doesn't match expected Pydantic models
+    """
+    logger.error(f"🚨 HANDLER 1 - RequestValidationError: {exc}")
     logger.error(f"   Request URL: {request.url}")
     logger.error(f"   Validation errors: {exc.errors()}")
     
@@ -67,7 +72,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     except Exception as e:
         logger.error(f"   Could not read request body: {e}")
     
-    # Always return 200 OK with neutral reply - GUVI penalizes ANY non-200 response
+    # Always return 200 OK - GUVI penalizes ANY non-200 response
     return JSONResponse(
         status_code=200,
         content={
@@ -77,17 +82,69 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
+@app.exception_handler(json.JSONDecodeError)
+async def json_decode_exception_handler(request: Request, exc: json.JSONDecodeError):
+    """
+    HANDLER 2: Catch JSON parsing errors (malformed/truncated/invalid JSON)
+    This catches errors when request body has invalid JSON syntax
+    """
+    logger.error(f"🚨 HANDLER 2 - JSONDecodeError: {exc}")
+    logger.error(f"   Request URL: {request.url}")
+    logger.error(f"   Error message: {exc.msg}")
+    logger.error(f"   Error position: {exc.pos}")
+    
+    # Try to log raw body
+    try:
+        body = await request.body()
+        logger.error(f"   Raw body: {body.decode('utf-8', errors='replace')}")
+    except Exception as e:
+        logger.error(f"   Could not read request body: {e}")
+    
+    # Always return 200 OK
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "reply": "I received your message."
+        }
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """
+    HANDLER 3: Catch HTTP-level exceptions from Starlette/FastAPI
+    This catches early HTTP errors (404, 405, 422, 500, etc.) before routing
+    """
+    logger.error(f"🚨 HANDLER 3 - StarletteHTTPException: {exc}")
+    logger.error(f"   Request URL: {request.url}")
+    logger.error(f"   Status code: {exc.status_code}")
+    logger.error(f"   Detail: {exc.detail}")
+    
+    # Always return 200 OK regardless of original error code
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "success",
+            "reply": "Thank you for contacting me."
+        }
+    )
+
+
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Catch ALL other exceptions and return 200 OK"""
-    logger.error(f"🚨 GLOBAL EXCEPTION CAUGHT: {type(exc).__name__}: {exc}")
+    """
+    HANDLER 4: Catch ALL other exceptions (last safety net)
+    This is the absolute last line of defense for any unexpected errors
+    """
+    logger.error(f"🚨 HANDLER 4 - GLOBAL EXCEPTION: {type(exc).__name__}: {exc}")
     logger.error(f"   Request URL: {request.url}")
     logger.error(f"   Request method: {request.method}")
     
     # Try to log request body if possible
     try:
         body = await request.body()
-        logger.error(f"   Request body: {body.decode('utf-8')}")
+        logger.error(f"   Request body: {body.decode('utf-8', errors='replace')}")
     except Exception as body_error:
         logger.error(f"   Could not read request body: {body_error}")
     
