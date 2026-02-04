@@ -685,3 +685,34 @@ async def root():
             "health": "GET /health"
         }
     }
+
+
+# ============================================================================
+# CATCH-ALL ROUTE - Must be LAST to act as fallback
+# ============================================================================
+
+@app.api_route("/{full_path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def catch_all_route(request: Request, full_path: str):
+    """
+    Catch-all route handler for undefined endpoints and unsupported methods
+    
+    This handles:
+    - Requests to undefined paths (prevents 404 Not Found)
+    - Unsupported HTTP methods on defined paths (prevents 405 Method Not Allowed)
+    - GUVI test requests to random endpoints
+    
+    MUST be defined LAST so it only catches unmatched routes.
+    """
+    logger.info(f"🔀 CATCH-ALL ROUTE triggered")
+    logger.info(f"   Method: {request.method}")
+    logger.info(f"   Path: /{full_path}")
+    logger.info(f"   Client: {request.client.host if request.client else 'unknown'}")
+    
+    # Return generic 200 OK response
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "ok",
+            "message": "Request received"
+        }
+    )
