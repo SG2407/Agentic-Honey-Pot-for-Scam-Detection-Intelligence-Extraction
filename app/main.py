@@ -294,8 +294,6 @@ async def honeypot_endpoint(
     # ====================================================================
     logger.info("🎯 ALL LAYERS PASSED - Processing honeypot logic")
     
-    try:
-    
     # ====================================================================
     # NORMAL HONEYPOT PROCESSING STARTS HERE
     # ====================================================================
@@ -353,7 +351,6 @@ async def honeypot_endpoint(
         message_counts[session_id] += 1
         logger.info(f"   Messages so far: {message_counts[session_id]} (including this scammer message)")
         
-        try:
         # ====================================================================
         # STEP 1: Check if callback already sent (session closed)
         # ====================================================================
@@ -512,17 +509,6 @@ async def honeypot_endpoint(
             status="success",
             reply=reply_text
         )
-    
-        except Exception as e:
-            logger.error(f"❌ Unexpected error in honeypot endpoint: {e}", exc_info=True)
-            # Return 200 OK even on errors
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "success",
-                    "reply": "I see. Thank you for the information."
-                }
-            )
     
     except Exception as outer_error:
         # Outer safety net - catch ANY error in the entire processing flow
