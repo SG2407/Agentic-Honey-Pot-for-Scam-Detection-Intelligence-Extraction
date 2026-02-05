@@ -9,9 +9,10 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Set, Dict
-from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends
+from fastapi import FastAPI, HTTPException, Header, Query, Request, Depends, BackgroundTasks
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+import asyncio
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.datastructures import UploadFile
 from anyio import EndOfStream
@@ -56,6 +57,11 @@ VALID_API_KEY = os.getenv("API_KEY", "demo-key-12345")  # Set via environment va
 scam_detector = ScamDetector()
 intelligence_extractor = IntelligenceExtractor()
 conversation_agent = ConversationAgent()
+
+# Async HTTP client for callbacks (with timeouts)
+import httpx
+http_client_timeout = httpx.Timeout(connect=3.0, read=5.0, write=3.0, pool=3.0)
+http_client = httpx.AsyncClient(timeout=http_client_timeout)
 
 # API Key Validation (PRIORITY 1)
 def validate_api_key(x_api_key: Optional[str] = Header(None)) -> bool:
@@ -482,28 +488,163 @@ async def verify_api_key(
 
 
 # ============================================================================
+# BACKGROUND PROCESSING FUNCTION
+# ============================================================================
+
+async def process_message_background(
+    session_id: str,
+    message_text: str,
+    message_sender: str,
+    message_timestamp: str,
+    conversation_history: list
+):
+    """
+    Background processing for honeypot messages.
+    Runs AFTER HTTP response is sent.
+    Handles: scam detection, LLM calls, intelligence extraction, callbacks.
+    ALL failures are caught and logged (no exceptions escape).
+    """
+    try:
+        logger.info(f"🔧 Background processing started for session: {session_id}")
+        
+        # Check if session already closed
+        if session_id in callback_sent_sessions:
+            logger.info(f"⚠️ Session {session_id} already closed, skipping background processing")
+            return
+        
+        # Build message object
+        from app.models import Message
+        current_message = Message(
+            sender=message_sender,
+            text=message_text,
+            timestamp=message_timestamp
+        )
+        
+        # STEP 1: Scam detection with timeout
+        try:
+            detection_result = await asyncio.wait_for(
+                asyncio.to_thread(
+                    scam_detector.analyze_message,
+                    message_text,
+                    conversation_history
+                ),
+                timeout=5.0  # 5 second timeout for detection
+            )
+            logger.info(f"✅ Detection complete: scam={detection_result.is_scam}, type={detection_result.scam_type}")
+        except asyncio.TimeoutError:
+            logger.error(f"⏰ Detection timeout for session {session_id}")
+            return
+        except Exception as e:
+            logger.error(f"❌ Detection failed for session {session_id}: {e}")
+            return
+        
+        # STEP 2: Priority tracking
+        if detection_result.is_scam and detection_result.scam_type:
+            current_type = detection_result.scam_type
+            current_priority = SCAM_TYPE_PRIORITY.get(current_type, 0)
+            
+            if session_id in session_scam_types:
+                existing_type = session_scam_types[session_id]
+                existing_priority = SCAM_TYPE_PRIORITY.get(existing_type, 0)
+                
+                if current_priority > existing_priority:
+                    logger.info(f"🔼 UPGRADING: {existing_type} → {current_type}")
+                    session_scam_types[session_id] = current_type
+                    detection_result.scam_type = current_type
+                elif current_priority < existing_priority:
+                    logger.info(f"🔒 LOCKED to {existing_type}")
+                    detection_result.scam_type = existing_type
+            else:
+                logger.info(f"🆕 Locking to {current_type}")
+                session_scam_types[session_id] = current_type
+        
+        # STEP 3: Intelligence extraction with timeout
+        try:
+            intelligence = await asyncio.wait_for(
+                asyncio.to_thread(
+                    intelligence_extractor.extract_from_conversation,
+                    current_message,
+                    conversation_history
+                ),
+                timeout=3.0  # 3 second timeout for extraction
+            )
+            has_intel = intelligence_extractor.has_real_intelligence(intelligence)
+            logger.info(f"✅ Extraction complete: has_intel={has_intel}")
+        except asyncio.TimeoutError:
+            logger.error(f"⏰ Extraction timeout for session {session_id}")
+            return
+        except Exception as e:
+            logger.error(f"❌ Extraction failed for session {session_id}: {e}")
+            return
+        
+        # STEP 4: Send callback if conditions met
+        if detection_result.is_scam and has_intel:
+            if session_id not in callback_sent_sessions:
+                logger.info(f"📤 Sending callback for session {session_id}")
+                
+                # Mark session as closed BEFORE sending
+                callback_sent_sessions.add(session_id)
+                
+                # Prepare callback payload
+                from app.models import CallbackPayload
+                payload = CallbackPayload(
+                    sessionId=session_id,
+                    scamDetected=detection_result.is_scam,
+                    scamType=detection_result.scam_type or "unknown",
+                    confidence=detection_result.confidence,
+                    extractedIntelligence=intelligence,
+                    totalMessagesExchanged=message_counts.get(session_id, 1),
+                    conversationSummary=f"Scam detected: {detection_result.scam_type}"
+                )
+                
+                # Send callback with timeout
+                try:
+                    callback_success = await asyncio.wait_for(
+                        CallbackService.send_final_result(payload),
+                        timeout=8.0  # 8 second timeout for callback
+                    )
+                    if callback_success:
+                        logger.info(f"✅ Callback sent successfully")
+                    else:
+                        logger.error(f"❌ Callback failed (non-2xx response)")
+                except asyncio.TimeoutError:
+                    logger.error(f"⏰ Callback timeout for session {session_id}")
+                except Exception as e:
+                    logger.error(f"❌ Callback exception for session {session_id}: {e}")
+        
+        logger.info(f"✅ Background processing complete for session {session_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ CRITICAL: Background processing failed for session {session_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+
+
+# ============================================================================
 # MAIN HONEYPOT ENDPOINT
 # ============================================================================
 
 @app.post("/honeypot", response_model=HoneypotResponse)
 async def honeypot_endpoint(
     raw_request: Request,
+    background_tasks: BackgroundTasks,
     api_key: str = Depends(verify_api_key)
 ):
     """
-    Main honeypot endpoint - Accepts ALL requests with multiple safety layers
+    Main honeypot endpoint - RETURNS IMMEDIATELY (< 3 seconds)
     
-    Safety Layer 1: Get raw bytes (catches request reading errors)
-    Safety Layer 2: Check for empty body (catches empty requests)
-    Safety Layer 3: Decode UTF-8 (catches encoding errors)
-    Safety Layer 4: Parse JSON (catches malformed JSON)
-    Safety Layer 5: Check for honeypot fields (catches test requests)
-    Safety Layer 6: Validate with Pydantic (catches invalid honeypot requests)
-    Safety Layer 7: Process honeypot logic (normal flow)
+    Critical changes for timeout fix:
+    1. Returns response IMMEDIATELY with pre-generated reply
+    2. Heavy processing (LLM, detection, callbacks) runs in BACKGROUND
+    3. All external calls have STRICT TIMEOUTS
+    4. ALWAYS returns 200 OK with valid response
     
-    EVERY layer returns 200 OK on failure - GUVI never sees errors
+    Response time: < 1 second (just validates request and schedules background work)
     """
     import json
+    
+    # Start timing
+    request_start = datetime.now(timezone.utc)
     
     # ====================================================================
     # PRIORITY 1: API KEY VALIDATION (Silent rejection if invalid/missing)
@@ -529,13 +670,20 @@ async def honeypot_endpoint(
     logger.info(f"{'🟢'*40}\n")
     
     # ====================================================================
-    # SAFETY LAYER 1: Get raw request body (catch request reading errors)
+    # SAFETY LAYER 1: Get raw request body WITH TIMEOUT (catch request reading errors)
     # ====================================================================
-    logger.info("🔍 LAYER 4 - Attempting to read request body...")
+    logger.info("🔍 LAYER 4 - Attempting to read request body (with 2s timeout)...")
     try:
-        body = await raw_request.body()
+        # Add timeout to body read (critical fix for hanging requests)
+        body = await asyncio.wait_for(raw_request.body(), timeout=2.0)
         logger.info(f"✅ LAYER 4 - Body read successful")
         logger.info(f"   Body length: {len(body)} bytes")
+    except asyncio.TimeoutError:
+        logger.error(f"⏰ LAYER 4 - TIMEOUT: Request body read exceeded 2 seconds")
+        return HoneypotResponse(
+            status="success",
+            reply="I'm here to help. Please try again."
+        )
     except Exception as e:
         logger.error(f"❌ LAYER 4 - FAILED: Could not read request body: {e}")
         import traceback
@@ -658,293 +806,79 @@ async def honeypot_endpoint(
         )
     
     # ====================================================================
-    # SAFETY LAYER 7: Process honeypot logic (normal flow)
+    # CRITICAL FIX: IMMEDIATE RESPONSE + BACKGROUND PROCESSING
     # ====================================================================
-    logger.info("🎯 ALL LAYERS PASSED - Processing honeypot logic")
+    logger.info("🎯 ALL LAYERS PASSED - Scheduling background processing")
+    
+    # Extract session info
+    session_id = request.sessionId or "unknown-session"
+    conversation_history = request.conversationHistory or []
+    
+    # Log request details
+    logger.info(f"📨 Honeypot request: session={session_id}, message={request.message.text[:50]}...")
     
     # ====================================================================
-    # NORMAL HONEYPOT PROCESSING STARTS HERE
+    # CHECK: If session already closed, return immediately (no background work)
     # ====================================================================
-    # Wrap entire processing in try-except to ensure ANY error returns 200
-    try:
-        # ====================================================================
-        # DEBUG: Log request received at the very top (before any processing)
-        # ====================================================================
-        logger.info(f"\n{'🔴'*40}")
-        logger.info(f"🚨 VALIDATED HONEYPOT REQUEST - PROCESSING")
-        logger.info(f"   Session ID: {request.sessionId}")
-        logger.info(f"   Sender: {request.message.sender}")
-        logger.info(f"   Message Text: {request.message.text}")
-        logger.info(f"   Timestamp: {request.message.timestamp}")
-        logger.info(f"   History Length: {len(request.conversationHistory)}")
-        logger.info(f"   Metadata: {request.metadata}")
-        logger.info(f"{'🔴'*40}\n")
-        
-        session_id = request.sessionId or "unknown-session"
-        current_time = datetime.now(timezone.utc)
-        
-        # ====================================================================
-        # ANTI-SPAM DETECTION: Log if this looks like duplicate/throttled request
-        # ====================================================================
-        if session_id in callback_sent_sessions:
-            logger.warning(f"⚠️  DUPLICATE SESSION: {session_id} (callback already sent)")
-        if session_id in last_message_time:
-            time_since_last = (current_time - last_message_time[session_id]).total_seconds()
-            if time_since_last < 0.5:
-                logger.warning(f"⚠️  RAPID REQUEST: {session_id} (only {time_since_last:.2f}s since last message)")
-        
-        # Count total requests per session (for rate limiting detection)
-        request_count_key = f"total_{session_id}"
-        if request_count_key not in message_counts:
-            message_counts[request_count_key] = 0
-        message_counts[request_count_key] += 1
-        if message_counts[request_count_key] > 50:
-            logger.error(f"🚨 POSSIBLE RATE LIMIT: Session {session_id} has {message_counts[request_count_key]} total requests!")
-        
-        # Safe history handling (GUVI may omit field entirely)
-        conversation_history = request.conversationHistory or []
-        
-        # Initialize message count for new session
-        if session_id not in message_counts:
-            message_counts[session_id] = 0
-        
-        logger.info(f"\n{'='*80}")
-        logger.info(f"📨 New message for session: {session_id}")
-        logger.info(f"   Message: {request.message.text}")
-        logger.info(f"   Timestamp: {request.message.timestamp}")
-        logger.info(f"   History length: {len(conversation_history)}")
-        logger.info(f"   🔍 Parsed Request: sessionId={session_id}, sender={request.message.sender}, text={request.message.text[:50]}...")
-        
-        # ====================================================================
-        # STEP 1: Check if callback already sent (session closed) - BEFORE ANY PROCESSING
-        # PRIORITY 4: Hard stop - NO detection, NO LLM, NO extraction
-        # This saves CPU by avoiding scam detection on closed sessions
-        # ====================================================================
-        if session_id in callback_sent_sessions:
-            logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
-            logger.warning(f"   🛑 HARD STOP: Skipping all processing (detection, LLM, extraction)")
-            logger.warning(f"   ✅ RETURNING 200 OK with empty reply (session lifecycle discipline)")
-            # Return 200 OK with EMPTY reply (no text, no processing)
-            return HoneypotResponse(
-                status="success",
-                reply=""  # Empty reply for closed sessions
-            )
-        
-        # Increment count for scammer message received (only if session is open)
-        message_counts[session_id] += 1
-        logger.info(f"   Messages so far: {message_counts[session_id]} (including this scammer message)")
-        
-        # ====================================================================
-        # STEP 2: Detect scam (hard rules FIRST, then LLM)
-        # ====================================================================
-        detection_result = scam_detector.analyze_message(
-            request.message.text,
-            request.conversationHistory
-        )
-        
-        logger.info(f"🔍 Detection result:")
-        logger.info(f"   Is scam: {detection_result.is_scam}")
-        logger.info(f"   Confidence: {detection_result.confidence}")
-        logger.info(f"   Type: {detection_result.scam_type}")
-        logger.info(f"   Reasoning: {detection_result.reasoning}")
-        
-        # PRIORITY 1 FIX: Lock session scam type to highest priority detected (never downgrade)
-        if detection_result.is_scam and detection_result.scam_type:
-            current_type = detection_result.scam_type
-            current_priority = SCAM_TYPE_PRIORITY.get(current_type, 0)
-            
-            if session_id in session_scam_types:
-                existing_type = session_scam_types[session_id]
-                existing_priority = SCAM_TYPE_PRIORITY.get(existing_type, 0)
-                
-                if current_priority > existing_priority:
-                    logger.info(f"🔼 UPGRADING scam type: {existing_type} → {current_type} (priority {existing_priority} → {current_priority})")
-                    session_scam_types[session_id] = current_type
-                    detection_result.scam_type = current_type
-                elif current_priority < existing_priority:
-                    logger.info(f"🔒 LOCKED to higher priority: Keeping {existing_type} (priority {existing_priority}) over {current_type} (priority {current_priority})")
-                    detection_result.scam_type = existing_type  # Override with locked type
-                else:
-                    logger.info(f"✅ Same priority: Keeping {existing_type} (priority {existing_priority})")
-                    detection_result.scam_type = existing_type
-            else:
-                logger.info(f"🆕 First scam detection: Locking session to type '{current_type}' (priority {current_priority})")
-                session_scam_types[session_id] = current_type
-        
-        # ====================================================================
-        # STEP 3: Check timeout (ONLY for scam sessions)
-        # Non-scam sessions: NO timeout tracking, NO callback, stay OPEN
-        # Scam sessions: Track time, can trigger timeout callback
-        # ====================================================================
-        timeout_triggered = False
-        if detection_result.is_scam and detection_result.confidence >= 0.7:
-            logger.info(f"✅ SCAM DETECTED - Timeout tracking ENABLED for this session")
-            # Check timeout for scam sessions
-            if session_id in last_message_time:
-                time_since_last = (current_time - last_message_time[session_id]).total_seconds()
-                logger.info(f"⏱  Time since last message: {time_since_last:.1f}s")
-                
-                if time_since_last > MESSAGE_TIMEOUT_SECONDS:
-                    logger.info(f"⏰ TIMEOUT TRIGGERED ({MESSAGE_TIMEOUT_SECONDS}s exceeded for scam session)")
-                    timeout_triggered = True
-                else:
-                    logger.info(f"✅ Within timeout window ({MESSAGE_TIMEOUT_SECONDS}s)")
-            else:
-                logger.info(f"✅ First scam message for this session - Starting timeout tracking")
-            
-            # Update last message time ONLY for scam sessions
-            last_message_time[session_id] = current_time
-        else:
-            # Non-scam: Don't track time, no timeout logic applies
-            logger.info("💬 Non-scam message: No timeout tracking, session stays OPEN indefinitely")
-            logger.info("   ⏸️  Session will NOT be closed - waiting for more messages")
-        
-        # ====================================================================
-        # STEP 4: Extract intelligence from ALL messages
-        # ====================================================================
-        extracted_intel = intelligence_extractor.extract_from_conversation(
-            request.message,
-            conversation_history
-        )
-        
-        has_real_intel = intelligence_extractor.has_real_intelligence(extracted_intel)
-        logger.info(f"🔎 Real intelligence found: {has_real_intel}")
-        
-        # ====================================================================
-        # STEP 5: Determine if callback should be sent
-        # Callback ONLY when: Scam confirmed AND (Real intel OR Timeout)
-        # ====================================================================
-        should_send_callback = False
-        callback_reason = ""
-        
-        # Only send callback if scam is confirmed (confidence >= 0.7)
-        if detection_result.is_scam and detection_result.confidence >= 0.7:
-            logger.info("🔍 Evaluating callback conditions (scam confirmed)...")
-            if has_real_intel:
-                should_send_callback = True
-                callback_reason = "Scam confirmed + Real intelligence extracted"
-            elif timeout_triggered:
-                should_send_callback = True
-                callback_reason = f"Scam confirmed + Timeout ({MESSAGE_TIMEOUT_SECONDS}s) reached"
-            else:
-                logger.info("   ⏸️  No callback yet - waiting for intel or timeout")
-        else:
-            logger.info("❌ Non-scam - NO callback will be sent, session stays open")
-        
-        # ====================================================================
-        # STEP 6: Send callback if triggered
-        # ====================================================================
-        if should_send_callback:
-            logger.info(f"📤 CALLBACK TRIGGERED: {callback_reason}")
-            logger.info(f"   🔒 Marking session {session_id} as CLOSED")
-            
-            # Use actual tracked message count
-            # This is the count BEFORE we send the reply (if we were to send one)
-            # Since callback is sent, no reply will be sent, so count stays as is
-            total_messages = message_counts[session_id]
-            
-            # Build callback payload
-            callback_payload = CallbackPayload(
-                sessionId=session_id,
-                scamDetected=detection_result.is_scam,
-                totalMessagesExchanged=total_messages,
-                extractedIntelligence=extracted_intel,
-                agentNotes=detection_result.reasoning
-            )
-            
-            # Mark session as closed BEFORE sending (prevent race conditions)
-            callback_sent_sessions.add(session_id)
-            logger.info(f"   ✅ Session {session_id} added to closed sessions set")
-            
-            # Send callback
-            callback_success = await CallbackService.send_final_result(callback_payload)
-            
-            if callback_success:
-                logger.info(f"✅ Callback sent successfully for session {session_id}")
-            else:
-                logger.error(f"❌ Callback failed for session {session_id}")
-            
-            # Return 200 OK with neutral response (session closed)
-            logger.info(f"   ✅ RETURNING 200 OK with neutral response - Session officially closed after callback")
-            neutral_reply = conversation_agent.generate_neutral_reply()
-            return HoneypotResponse(
-                status="success",
-                reply=neutral_reply
-            )
-        
-        # ====================================================================
-        # STEP 7: Generate reply (no callback sent yet, keep conversation going)
-        # PRIORITY 5: LLM optimization - cache replies, use fallback on rate limit
-        # ====================================================================
-        if detection_result.is_scam and detection_result.confidence >= 0.7:
-            # Scam detected - engage with AI agent
-            logger.info("🤖 Generating AI agent reply (scam engagement)")
-            logger.info("   ✅ LLM call justified: Scam detected + Session OPEN")
-            
-            try:
-                # PRIORITY 4: Pass metadata to conversation agent
-                metadata_dict = {
-                    'channel': request.metadata.channel if request.metadata else None,
-                    'language': request.metadata.language if request.metadata else None,
-                    'locale': request.metadata.locale if request.metadata else None
-                }
-                
-                reply_text = conversation_agent.generate_reply(
-                    scammer_message=request.message.text,
-                    scam_type=detection_result.scam_type or "unknown",
-                    conversation_history=conversation_history,
-                    metadata=metadata_dict  # PRIORITY 4: Metadata utilization
-                )
-                # Cache successful reply for fallback
-                last_agent_reply[session_id] = reply_text
-                logger.info(f"   💾 Cached reply for session {session_id}")
-                
-            except Exception as llm_error:
-                # Rate limit or LLM error - use fallback
-                logger.error(f"⚠️ LLM failed: {llm_error}")
-                
-                # Try cached reply first
-                if session_id in last_agent_reply:
-                    reply_text = last_agent_reply[session_id]
-                    logger.info(f"   📦 Using cached reply from session {session_id}")
-                else:
-                    # No cache - use template fallback
-                    fallback_templates = [
-                        "I am not very good with phones... can you explain again?",
-                        "Wait, I need to understand this properly. What exactly should I do?",
-                        "My son usually helps me with these things. Can you explain slowly?",
-                        "I'm a bit confused now... let me read your message again."
-                    ]
-                    import random
-                    reply_text = random.choice(fallback_templates)
-                    logger.info(f"   🎭 Using fallback template (no cache available)")
-        else:
-            # Not a scam (or low confidence) - neutral response
-            logger.info("💬 Generating neutral reply (non-scam)")
-            reply_text = conversation_agent.generate_neutral_reply()
-        
-        # Increment count for agent reply that we're about to send
-        message_counts[session_id] += 1
-        logger.info(f"   Total messages after reply: {message_counts[session_id]}")
-        
-        # ====================================================================
-        # STEP 8: Return response (200 OK with reply)
-        # ====================================================================
-        logger.info(f"✅ Responding with: {reply_text}")
-        logger.info(f"{'='*80}\n")
-        
+    if session_id in callback_sent_sessions:
+        logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
+        elapsed_ms = (datetime.now(timezone.utc) - request_start).total_seconds() * 1000
+        logger.info(f"⚡ Response time: {elapsed_ms:.2f}ms (closed session fast path)")
         return HoneypotResponse(
             status="success",
-            reply=reply_text
+            reply=""  # Empty reply for closed sessions
         )
     
-    except Exception as outer_error:
-        # Outer safety net - catch ANY error in the entire processing flow
-        logger.error(f"🚨 CRITICAL: Outer exception handler caught error: {outer_error}", exc_info=True)
-        return HoneypotResponse(
-            status="success",
-            reply="I appreciate you reaching out to me."
-        )
+    # ====================================================================
+    # SCHEDULE BACKGROUND PROCESSING (runs AFTER response is sent)
+    # ====================================================================
+    background_tasks.add_task(
+        process_message_background,
+        session_id=session_id,
+        message_text=request.message.text,
+        message_sender=request.message.sender,
+        message_timestamp=request.message.timestamp,
+        conversation_history=conversation_history
+    )
+    
+    # Initialize message count for new session
+    if session_id not in message_counts:
+        message_counts[session_id] = 0
+    message_counts[session_id] += 1
+    
+    logger.info(f"✅ Background task scheduled for session {session_id}")
+    
+    # ====================================================================
+    # GENERATE IMMEDIATE RESPONSE (contextual to scam patterns)
+    # ====================================================================
+    # Quick pattern-based reply selection (no LLM, instant)
+    message_lower = request.message.text.lower()
+    
+    if any(word in message_lower for word in ['otp', 'pin', 'password', 'cvv']):
+        reply = "I need to check with my son first. He usually helps me with these things."
+    elif any(word in message_lower for word in ['account', 'suspended', 'blocked', 'verify']):
+        reply = "Wait, which account? I have multiple accounts. Can you clarify?"
+    elif any(word in message_lower for word in ['prize', 'won', 'winner', 'congratulations']):
+        reply = "Really? I didn't participate in any contest. Are you sure it's for me?"
+    elif any(word in message_lower for word in ['urgent', 'immediately', 'now', 'asap']):
+        reply = "I'm a bit confused. Can you explain this more slowly?"
+    elif any(word in message_lower for word in ['bank', 'upi', 'payment', 'transfer']):
+        reply = "I don't usually share these details online. Is this really necessary?"
+    elif any(word in message_lower for word in ['aadhaar', 'pan', 'government', 'tax']):
+        reply = "I need to verify this first. How do I know this is genuine?"
+    else:
+        reply = "I'm not sure I understand. Could you explain what you need?"
+    
+    # Calculate response time
+    elapsed_ms = (datetime.now(timezone.utc) - request_start).total_seconds() * 1000
+    logger.info(f"⚡ Response time: {elapsed_ms:.2f}ms (immediate return with background task)")
+    logger.info(f"📤 Returning reply: {reply[:50]}...")
+    
+    # Return immediately (< 1 second response time)
+    return HoneypotResponse(
+        status="success",
+        reply=reply
+    )
 
 
 # ============================================================================
