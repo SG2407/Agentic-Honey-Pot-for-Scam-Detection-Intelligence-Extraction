@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 callback_sent_sessions: Set[str] = set()  # Sessions that received callback (session closed)
 last_message_time: Dict[str, datetime] = {}  # Track last message time for timeout
 message_counts: Dict[str, int] = {}  # Track actual messages exchanged per session
+last_agent_reply: Dict[str, str] = {}  # Cache last agent reply per session for fallback (PRIORITY 5)
 MESSAGE_TIMEOUT_SECONDS = int(os.getenv("MESSAGE_TIMEOUT_SECONDS", "10"))
 
 # Initialize components
@@ -659,22 +660,24 @@ async def honeypot_endpoint(
         logger.info(f"   History length: {len(conversation_history)}")
         logger.info(f"   🔍 Parsed Request: sessionId={session_id}, sender={request.message.sender}, text={request.message.text[:50]}...")
         
-        # Increment count for scammer message received
-        message_counts[session_id] += 1
-        logger.info(f"   Messages so far: {message_counts[session_id]} (including this scammer message)")
-        
         # ====================================================================
-        # STEP 1: Check if callback already sent (session closed)
+        # STEP 1: Check if callback already sent (session closed) - BEFORE ANY PROCESSING
+        # PRIORITY 4: Hard stop - NO detection, NO LLM, NO extraction
+        # This saves CPU by avoiding scam detection on closed sessions
         # ====================================================================
         if session_id in callback_sent_sessions:
             logger.warning(f"⛔ Session {session_id} already closed (callback sent)")
-            logger.warning(f"   ✅ RETURNING 200 OK with neutral response - Session was previously closed")
-            # Return 200 OK with neutral acknowledgment instead of 410
-            neutral_reply = conversation_agent.generate_neutral_reply()
+            logger.warning(f"   🛑 HARD STOP: Skipping all processing (detection, LLM, extraction)")
+            logger.warning(f"   ✅ RETURNING 200 OK with empty reply (session lifecycle discipline)")
+            # Return 200 OK with EMPTY reply (no text, no processing)
             return HoneypotResponse(
                 status="success",
-                reply=neutral_reply
+                reply=""  # Empty reply for closed sessions
             )
+        
+        # Increment count for scammer message received (only if session is open)
+        message_counts[session_id] += 1
+        logger.info(f"   Messages so far: {message_counts[session_id]} (including this scammer message)")
         
         # ====================================================================
         # STEP 2: Detect scam (hard rules FIRST, then LLM)
@@ -793,15 +796,42 @@ async def honeypot_endpoint(
         
         # ====================================================================
         # STEP 7: Generate reply (no callback sent yet, keep conversation going)
+        # PRIORITY 5: LLM optimization - cache replies, use fallback on rate limit
         # ====================================================================
         if detection_result.is_scam and detection_result.confidence >= 0.7:
             # Scam detected - engage with AI agent
             logger.info("🤖 Generating AI agent reply (scam engagement)")
-            reply_text = conversation_agent.generate_reply(
-                scammer_message=request.message.text,
-                scam_type=detection_result.scam_type or "unknown",
-                conversation_history=conversation_history
-            )
+            logger.info("   ✅ LLM call justified: Scam detected + Session OPEN")
+            
+            try:
+                reply_text = conversation_agent.generate_reply(
+                    scammer_message=request.message.text,
+                    scam_type=detection_result.scam_type or "unknown",
+                    conversation_history=conversation_history
+                )
+                # Cache successful reply for fallback
+                last_agent_reply[session_id] = reply_text
+                logger.info(f"   💾 Cached reply for session {session_id}")
+                
+            except Exception as llm_error:
+                # Rate limit or LLM error - use fallback
+                logger.error(f"⚠️ LLM failed: {llm_error}")
+                
+                # Try cached reply first
+                if session_id in last_agent_reply:
+                    reply_text = last_agent_reply[session_id]
+                    logger.info(f"   📦 Using cached reply from session {session_id}")
+                else:
+                    # No cache - use template fallback
+                    fallback_templates = [
+                        "I am not very good with phones... can you explain again?",
+                        "Wait, I need to understand this properly. What exactly should I do?",
+                        "My son usually helps me with these things. Can you explain slowly?",
+                        "I'm a bit confused now... let me read your message again."
+                    ]
+                    import random
+                    reply_text = random.choice(fallback_templates)
+                    logger.info(f"   🎭 Using fallback template (no cache available)")
         else:
             # Not a scam (or low confidence) - neutral response
             logger.info("💬 Generating neutral reply (non-scam)")

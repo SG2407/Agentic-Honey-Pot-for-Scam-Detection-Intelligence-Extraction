@@ -29,30 +29,72 @@ class ScamDetector:
     
     # Hard scam patterns - GUARANTEED detection (confidence = 1.0)
     HARD_PATTERNS = [
+        # Credential Phishing - Direct credential/identity requests (PRIORITY)
         {
-            "pattern": r"(?i)(send|share|provide|give|tell)\s+(me\s+)?(your\s+)?(otp|pin|password|cvv)",
+            "pattern": r"(?i)(send|share|provide|give|tell|enter|submit)\s+(me\s+)?(your\s+)?(otp|pin|password|cvv|code)",
             "scam_type": "credential_phishing",
-            "reasoning": "Explicit request for credentials (OTP/PIN/password)"
+            "reasoning": "Explicit request for credentials (OTP/PIN/password/CVV)"
         },
         {
-            "pattern": r"(?i)(account|card)\s+(blocked|suspended|locked|compromised).*(urgent|immediate|now|today|verify)",
-            "scam_type": "financial_threat",
-            "reasoning": "Account urgency threat with immediate action demand"
+            "pattern": r"(?i)(send|share|provide|give|tell|enter).*(aadh?aar|pan\s+card|pan\s+number)",
+            "scam_type": "credential_phishing",
+            "reasoning": "Identity document request (Aadhaar/PAN)"
         },
         {
-            "pattern": r"(?i)(upi\s+(pin|id|password)|share.*upi|send.*upi\s+(pin|id))",
+            "pattern": r"(?i)(upi\s+(pin|id|password)|share.*upi|send.*upi\s+(pin|id)|enter.*upi)",
             "scam_type": "credential_phishing",
             "reasoning": "UPI credential request"
         },
         {
-            "pattern": r"(?i)(bank\s+account\s+(number|details)|ifsc\s+code|account\s+number).*(provide|share|send|give|tell)",
+            "pattern": r"(?i)(bank\s+account\s+(number|details)|ifsc\s+code|account\s+number|cvv\s+number).*(provide|share|send|give|tell|enter)",
             "scam_type": "credential_phishing",
             "reasoning": "Bank account details request"
         },
         {
-            "pattern": r"(?i)(won|winner|congratulations).*(prize|lottery|reward|gift|lakh|crore)",
-            "scam_type": "prize_scam",
+            "pattern": r"(?i)(verify|update|confirm).*(aadh?aar|pan\s+card|kyc).*(link|click|submit|send|share)",
+            "scam_type": "credential_phishing",
+            "reasoning": "Identity verification phishing attempt"
+        },
+        
+        # Financial Threat - Urgency + consequences
+        {
+            "pattern": r"(?i)(account|card).*(blocked|suspended|locked|frozen|compromised|deactivated)",
+            "scam_type": "financial_threat",
+            "reasoning": "Account status threat detected"
+        },
+        {
+            "pattern": r"(?i)(last\s+(chance|warning|day)|expire|cancel|close).*(account|service|card)",
+            "scam_type": "financial_threat",
+            "reasoning": "Urgency-based account threat"
+        },
+        {
+            "pattern": r"(?i)(unauthorized|suspicious|fraud).*(transaction|activity|payment).*(verify|confirm|block)",
+            "scam_type": "financial_threat",
+            "reasoning": "Fraudulent transaction scare tactic"
+        },
+        
+        # Reward Scam - Prize/lottery/cashback
+        {
+            "pattern": r"(?i)(won|winner|congratulations|selected).*(prize|lottery|reward|gift|lakh|crore|cashback)",
+            "scam_type": "reward_scam",
             "reasoning": "Prize/lottery win notification"
+        },
+        {
+            "pattern": r"(?i)(claim|collect|receive).*(prize|reward|cashback|refund|amount).*(click|link|verify)",
+            "scam_type": "reward_scam",
+            "reasoning": "Reward claiming scam"
+        },
+        
+        # Impersonation - Authority figures
+        {
+            "pattern": r"(?i)(income\s+tax|tax\s+department|rbi|customs|police|court).*(notice|summon|refund|pending|action)",
+            "scam_type": "impersonation",
+            "reasoning": "Government authority impersonation"
+        },
+        {
+            "pattern": r"(?i)(official|authorized|government).*(representative|agent|officer).*(verify|update|confirm)",
+            "scam_type": "impersonation",
+            "reasoning": "Official authority impersonation"
         }
     ]
     

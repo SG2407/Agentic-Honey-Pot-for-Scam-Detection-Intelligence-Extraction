@@ -27,23 +27,27 @@ class ConversationAgent:
             self._groq_client = Groq(api_key=api_key)
         return self._groq_client
     
-    # Personas for different scam types
+    # Enhanced personas with human-like engagement patterns
     PERSONAS = {
         "worried_customer": {
-            "style": "concerned, anxious, wants to fix problem",
-            "example": "Oh no! My account is blocked? What should I do to fix this?"
+            "style": "concerned, anxious, wants to fix problem, asks follow-up questions",
+            "traits": "shows hesitation, mentions personal context, gradually reveals info",
+            "example": "Oh no... last week also I got similar message. Which account exactly? I have two accounts, salary and savings."
         },
         "excited_winner": {
-            "style": "excited, eager, doesn't want to miss opportunity",
-            "example": "Really?! I won a prize? That's amazing! How do I claim it?"
+            "style": "excited but cautious, eager but confused about process",
+            "traits": "expresses disbelief, asks verification questions, delays action",
+            "example": "Really?! I never entered any lottery... but if its true, amazing! How do I verify this is real? Do I need to pay anything first?"
         },
         "confused_elderly": {
-            "style": "confused, needs help, trusting",
-            "example": "I don't understand. Can you explain this again? I'm not good with technology."
+            "style": "confused, needs step-by-step help, makes small errors, trusting",
+            "traits": "asks to repeat info, mentions difficulty with technology, seeks reassurance",
+            "example": "I dont undorstand properly... can you explain slowly? My son usually helps me with phone but he is not here now. Which button I should press?"
         },
         "cautious_user": {
-            "style": "somewhat skeptical but willing to help",
-            "example": "I'm not sure about this. Can you verify who you are first?"
+            "style": "somewhat skeptical but willing to cooperate if convinced",
+            "traits": "asks for proof, mentions past scam experiences, tests authenticity",
+            "example": "I am not sure... last time someone tried to cheat me. Can you tell me your employee ID? Or should I call the bank directly to verify?"
         }
     }
     
@@ -53,6 +57,7 @@ class ConversationAgent:
             "financial_threat": "worried_customer",
             "credential_phishing": "confused_elderly",
             "prize_scam": "excited_winner",
+            "reward_scam": "excited_winner",  # Maps to same persona as prize_scam
             "impersonation": "cautious_user"
         }
         return persona_map.get(scam_type, "worried_customer")
@@ -83,38 +88,103 @@ class ConversationAgent:
         persona = self.PERSONAS[persona_key]
         context = self._build_conversation_context(conversation_history)
         
-        prompt = f"""You are pretending to be a {persona['style']} person who received a scam message.
+        turn_count = len(conversation_history) + 1
+        engagement_level = "early" if turn_count <= 3 else "mid" if turn_count <= 6 else "deep"
+        
+        # Add aggressive elicitation strategies
+        elicitation_tactics = [
+            "Sometimes ASK DIRECT QUESTIONS that reveal info: 'Should I pay from my bank app or UPI?', 'Which account should I send to?'",
+            "Mention YOUR payment methods: 'I have PhonePe, should I use that?', 'My bank account is with SBI'",
+            "Ask for THEIR contact details: 'Can you send the official link again?', 'What's your employee ID?'"
+        ]
+        
+        prompt = f"""You are a {persona['style']} person chatting with a scammer (turn {turn_count}).
 
-Scammer's message: {scammer_message}
+Scammer said: {scammer_message}
 
-Previous conversation:
+Conversation so far:
 {context}
 
-IMPORTANT RULES:
-1. Respond naturally as a {persona_key.replace('_', ' ')}
-2. Show concern/interest but DON'T explicitly ask for: "bank account", "UPI ID", "phone number"
-3. Instead, coax information organically:
-   - "Which account is affected? I want to check my balance"
-   - "Should I use my UPI to verify? Which app should I use?"
-   - "Can I call you? What's your contact number to verify this?"
-4. Keep responses SHORT (1-2 sentences, max 30 words)
-5. Sound human - use simple language, maybe a typo or two
-6. Show urgency if it's a threat, excitement if it's a prize
+Your personality traits: {persona['traits']}
 
-Example style: {persona['example']}
+ENGAGEMENT RULES (engagement level: {engagement_level}):
+1. ALWAYS ask a follow-up question or express confusion/concern
+2. Show hesitation before complying: "wait...", "but...", "I'm not sure..."
+3. Reveal vulnerability GRADUALLY:
+   - Early turns (1-3): Ask clarifying questions, express worry/excitement
+   - Mid turns (4-6): Share partial context ("I have two accounts..."), seek reassurance
+   - Deep turns (7+): Show more trust, consider complying but still hesitant
+4. BE PROACTIVE - steer conversation to extract their info:
+   - "Which account you mean? Savings or current?"
+   - "Should I pay through my Paytm UPI or PhonePe?"
+   - "Can you send me the official link again?"
+   - "What's your employee ID for verification?"
+5. Keep it SHORT (20-35 words max)
+6. Use simple language, occasional typos ("dont" instead of "don't", missing punctuation)
+7. Add personal context: "my son helps me usually", "last week also got message", "I'm at office now"
 
-Generate ONLY the reply text (no labels, no explanations):"""
+{elicitation_tactics[turn_count % 3]}
+
+Style example: {persona['example']}
+
+Generate ONLY your natural reply (no labels):"""
 
         if not self.groq_client:
-            # Fallback if Groq not available
-            logger.warning("Groq client not available - using fallback")
+            # Enhanced fallback with 5 variants per persona (confused/compliant/cautious tones)
+            logger.warning("Groq client not available - using enhanced fallback")
+            turn_count = len(conversation_history) + 1
             fallback_responses = {
-                "worried_customer": "Oh no, I'm worried! What should I do next?",
-                "excited_winner": "Wow! This is great news! What do I need to do?",
-                "confused_elderly": "I'm confused. Can you help me understand this?",
-                "cautious_user": "Can you provide more details? I want to make sure this is legitimate."
+                "worried_customer": [
+                    # Variant 1: Confused tone
+                    "Oh no... I'm really worried. Which account is blocked? I have salary and savings both.",
+                    # Variant 2: Compliant tone
+                    "This is serious? I will do whatever needed. Should I pay through my PhonePe UPI?",
+                    # Variant 3: Cautious tone
+                    "Please tell me clearly... which bank you are calling from? I want to verify first.",
+                    # Variant 4: Proactive tone
+                    "What documents you need? I have my Aadhaar and PAN ready. Where should I send?",
+                    # Variant 5: Hesitant tone
+                    "Wait... last month also got such message. Is this same issue or new problem?"
+                ],
+                "excited_winner": [
+                    # Variant 1: Excited/confused
+                    "Really?! I never entered any lottery but if its true, amazing! How do I claim?",
+                    # Variant 2: Eager/compliant
+                    "Wow! Tell me what to do quickly. Should I pay processing fee from my bank account?",
+                    # Variant 3: Excited/cautious
+                    "This is great news! But how did you get my number? Should I verify this somewhere?",
+                    # Variant 4: Proactive
+                    "Fantastic! Do I need to share my UPI ID? I use Paytm usually, is that okay?",
+                    # Variant 5: Hesitant excitement
+                    "I cant believe this... my friend also got such message. Where should I collect prize?"
+                ],
+                "confused_elderly": [
+                    # Variant 1: Very confused
+                    "I dont undorstand properly... can you explain slowly? Which button should I press?",
+                    # Variant 2: Compliant/helpless
+                    "Please help me... I'm not good with phone. Tell me step by step what to do.",
+                    # Variant 3: Seeking help
+                    "My son usually helps but he is not here. Can you call me and explain?",
+                    # Variant 4: Trying to understand
+                    "Wait, let me get my reading glasses... which account you said? The savings one?",
+                    # Variant 5: Willing but confused
+                    "I want to fix this. Should I go to bank branch or can do from phone only?"
+                ],
+                "cautious_user": [
+                    # Variant 1: Skeptical
+                    "I'm not sure about this... can you give me your employee ID to verify?",
+                    # Variant 2: Testing authenticity
+                    "Last time someone tried to cheat me. How do I know this is real? Give me proof.",
+                    # Variant 3: Seeking verification
+                    "Which department you are calling from exactly? I will call bank directly to confirm.",
+                    # Variant 4: Conditional compliance
+                    "Okay, I will help but first send me official email or SMS from bank number.",
+                    # Variant 5: Cautious but willing
+                    "Let me check... if this is genuine, I will provide details. What verification you need?"
+                ]
             }
-            return fallback_responses.get(persona_key, "I see. Can you tell me more?")
+            responses = fallback_responses.get(persona_key, ["I see... can you explain more clearly?"])
+            return responses[(turn_count - 1) % len(responses)]
         
         try:
             response = self.groq_client.chat.completions.create(
@@ -130,23 +200,51 @@ Generate ONLY the reply text (no labels, no explanations):"""
             
         except Exception as e:
             logger.error(f"Agent reply generation failed: {e}")
-            # Fallback responses based on persona
+            # Use same enhanced fallback with 5 variants
+            turn_count = len(conversation_history) + 1
             fallback_responses = {
-                "worried_customer": "Oh no, I'm worried! What should I do next?",
-                "excited_winner": "Wow! This is great news! What do I need to do?",
-                "confused_elderly": "I'm confused. Can you help me understand this?",
-                "cautious_user": "Can you provide more details? I want to make sure this is legitimate."
+                "worried_customer": [
+                    "Oh no... I'm really worried. Which account is blocked? I have salary and savings both.",
+                    "This is serious? I will do whatever needed. Should I pay through my PhonePe UPI?",
+                    "Please tell me clearly... which bank you are calling from? I want to verify first.",
+                    "What documents you need? I have my Aadhaar and PAN ready. Where should I send?",
+                    "Wait... last month also got such message. Is this same issue or new problem?"
+                ],
+                "excited_winner": [
+                    "Really?! I never entered any lottery but if its true, amazing! How do I claim?",
+                    "Wow! Tell me what to do quickly. Should I pay processing fee from my bank account?",
+                    "This is great news! But how did you get my number? Should I verify this somewhere?",
+                    "Fantastic! Do I need to share my UPI ID? I use Paytm usually, is that okay?",
+                    "I cant believe this... my friend also got such message. Where should I collect prize?"
+                ],
+                "confused_elderly": [
+                    "I dont undorstand properly... can you explain slowly? Which button should I press?",
+                    "Please help me... I'm not good with phone. Tell me step by step what to do.",
+                    "My son usually helps but he is not here. Can you call me and explain?",
+                    "Wait, let me get my reading glasses... which account you said? The savings one?",
+                    "I want to fix this. Should I go to bank branch or can do from phone only?"
+                ],
+                "cautious_user": [
+                    "I'm not sure about this... can you give me your employee ID to verify?",
+                    "Last time someone tried to cheat me. How do I know this is real? Give me proof.",
+                    "Which department you are calling from exactly? I will call bank directly to confirm.",
+                    "Okay, I will help but first send me official email or SMS from bank number.",
+                    "Let me check... if this is genuine, I will provide details. What verification you need?"
+                ]
             }
-            return fallback_responses.get(persona_key, "I see. Can you tell me more?")
+            responses = fallback_responses.get(persona_key, ["I see... can you explain more clearly?"])
+            return responses[(turn_count - 1) % len(responses)]
     
     def generate_neutral_reply(self) -> str:
-        """Generate neutral reply for non-scam messages"""
+        """Generate neutral reply for non-scam messages - more human and helpful"""
         neutral_responses = [
-            "Thank you for your message. I have received it.",
-            "Message received. Thank you.",
-            "I understand. Thank you for letting me know.",
-            "Okay, got it. Thanks.",
-            "Noted. Thank you."
+            "Sure, I can help with that. What would you like to know?",
+            "Yes, I'm here. What do you need?",
+            "I understand. How can I assist you?",
+            "Okay, got it. What's next?",
+            "Thanks for reaching out. What can I do for you?",
+            "Alright, I'm listening. Please go ahead.",
+            "Received. Let me know what you need."
         ]
         import random
         return random.choice(neutral_responses)
