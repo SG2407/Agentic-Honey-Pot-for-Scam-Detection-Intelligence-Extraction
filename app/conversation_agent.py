@@ -1,9 +1,9 @@
 """AI conversation agent for natural scammer engagement"""
 
 import os
-from groq import Groq
 from typing import List
 from app.models import Message
+from app.llm_provider import LLMManager  # PRIORITY 2: Abstract LLM provider
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,19 +13,8 @@ class ConversationAgent:
     """Generate human-like responses to engage scammers naturally"""
     
     def __init__(self):
-        """Initialize ConversationAgent with lazy Groq client"""
-        self._groq_client = None
-    
-    @property
-    def groq_client(self):
-        """Lazy initialization of Groq client"""
-        if self._groq_client is None:
-            api_key = os.getenv("GROQ_API_KEY")
-            if not api_key:
-                logger.warning("GROQ_API_KEY not set - will use fallback responses")
-                return None
-            self._groq_client = Groq(api_key=api_key)
-        return self._groq_client
+        """Initialize ConversationAgent with LLM manager (PRIORITY 2)"""
+        self.llm_manager = LLMManager()  # Supports OpenRouter + Groq with fallback
     
     # Enhanced personas with human-like engagement patterns
     PERSONAS = {
@@ -78,10 +67,12 @@ class ConversationAgent:
         self, 
         scammer_message: str, 
         scam_type: str,
-        conversation_history: List[Message]
+        conversation_history: List[Message],
+        metadata: dict = None  # PRIORITY 4: Metadata for context-aware replies
     ) -> str:
         """
         Generate natural, human-like reply to engage scammer
+        PRIORITY 4: Uses metadata (channel, language, locale) for realism
         NEVER explicitly asks for intel - coaxes it organically
         """
         persona_key = self._select_persona(scam_type)
@@ -90,6 +81,19 @@ class ConversationAgent:
         
         turn_count = len(conversation_history) + 1
         engagement_level = "early" if turn_count <= 3 else "mid" if turn_count <= 6 else "deep"
+        
+        # PRIORITY 4: Extract metadata for context
+        channel = metadata.get('channel') if metadata else None
+        locale = metadata.get('locale') if metadata else None
+        
+        # PRIORITY 4: Adjust reply style based on channel
+        style_hints = ""
+        if channel == "sms":
+            style_hints = "Keep reply VERY SHORT (under 25 words). SMS-style, minimal punctuation."
+        elif channel == "whatsapp":
+            style_hints = "Conversational WhatsApp style. Can use abbreviations like 'pls', 'ok', 'wat'."
+        elif locale and 'IN' in str(locale).upper():
+            style_hints = "Use Indian context: mention INR, local payment methods (Paytm, PhonePe, GPay)."
         
         # Add aggressive elicitation strategies
         elicitation_tactics = [
@@ -106,6 +110,8 @@ Conversation so far:
 {context}
 
 Your personality traits: {persona['traits']}
+
+{style_hints}
 
 ENGAGEMENT RULES (engagement level: {engagement_level}):
 1. ALWAYS ask a follow-up question or express confusion/concern
@@ -129,111 +135,73 @@ Style example: {persona['example']}
 
 Generate ONLY your natural reply (no labels):"""
 
-        if not self.groq_client:
-            # Enhanced fallback with 5 variants per persona (confused/compliant/cautious tones)
-            logger.warning("Groq client not available - using enhanced fallback")
-            turn_count = len(conversation_history) + 1
-            fallback_responses = {
-                "worried_customer": [
-                    # Variant 1: Confused tone
-                    "Oh no... I'm really worried. Which account is blocked? I have salary and savings both.",
-                    # Variant 2: Compliant tone
-                    "This is serious? I will do whatever needed. Should I pay through my PhonePe UPI?",
-                    # Variant 3: Cautious tone
-                    "Please tell me clearly... which bank you are calling from? I want to verify first.",
-                    # Variant 4: Proactive tone
-                    "What documents you need? I have my Aadhaar and PAN ready. Where should I send?",
-                    # Variant 5: Hesitant tone
-                    "Wait... last month also got such message. Is this same issue or new problem?"
-                ],
-                "excited_winner": [
-                    # Variant 1: Excited/confused
-                    "Really?! I never entered any lottery but if its true, amazing! How do I claim?",
-                    # Variant 2: Eager/compliant
-                    "Wow! Tell me what to do quickly. Should I pay processing fee from my bank account?",
-                    # Variant 3: Excited/cautious
-                    "This is great news! But how did you get my number? Should I verify this somewhere?",
-                    # Variant 4: Proactive
-                    "Fantastic! Do I need to share my UPI ID? I use Paytm usually, is that okay?",
-                    # Variant 5: Hesitant excitement
-                    "I cant believe this... my friend also got such message. Where should I collect prize?"
-                ],
-                "confused_elderly": [
-                    # Variant 1: Very confused
-                    "I dont undorstand properly... can you explain slowly? Which button should I press?",
-                    # Variant 2: Compliant/helpless
-                    "Please help me... I'm not good with phone. Tell me step by step what to do.",
-                    # Variant 3: Seeking help
-                    "My son usually helps but he is not here. Can you call me and explain?",
-                    # Variant 4: Trying to understand
-                    "Wait, let me get my reading glasses... which account you said? The savings one?",
-                    # Variant 5: Willing but confused
-                    "I want to fix this. Should I go to bank branch or can do from phone only?"
-                ],
-                "cautious_user": [
-                    # Variant 1: Skeptical
-                    "I'm not sure about this... can you give me your employee ID to verify?",
-                    # Variant 2: Testing authenticity
-                    "Last time someone tried to cheat me. How do I know this is real? Give me proof.",
-                    # Variant 3: Seeking verification
-                    "Which department you are calling from exactly? I will call bank directly to confirm.",
-                    # Variant 4: Conditional compliance
-                    "Okay, I will help but first send me official email or SMS from bank number.",
-                    # Variant 5: Cautious but willing
-                    "Let me check... if this is genuine, I will provide details. What verification you need?"
-                ]
-            }
-            responses = fallback_responses.get(persona_key, ["I see... can you explain more clearly?"])
-            return responses[(turn_count - 1) % len(responses)]
+        # PRIORITY 2: Use LLM manager with automatic fallback
+        llm_reply = self.llm_manager.generate(
+            prompt=prompt,
+            model=None,  # Let provider choose model
+            temperature=0.7,
+            max_tokens=100
+        )
         
-        try:
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,  # More creative for natural conversation
-                max_tokens=100
-            )
-            
-            reply = response.choices[0].message.content.strip()
-            logger.info(f"🤖 Agent reply ({persona_key}): {reply}")
-            return reply
-            
-        except Exception as e:
-            logger.error(f"Agent reply generation failed: {e}")
-            # Use same enhanced fallback with 5 variants
-            turn_count = len(conversation_history) + 1
-            fallback_responses = {
-                "worried_customer": [
-                    "Oh no... I'm really worried. Which account is blocked? I have salary and savings both.",
-                    "This is serious? I will do whatever needed. Should I pay through my PhonePe UPI?",
-                    "Please tell me clearly... which bank you are calling from? I want to verify first.",
-                    "What documents you need? I have my Aadhaar and PAN ready. Where should I send?",
-                    "Wait... last month also got such message. Is this same issue or new problem?"
-                ],
-                "excited_winner": [
-                    "Really?! I never entered any lottery but if its true, amazing! How do I claim?",
-                    "Wow! Tell me what to do quickly. Should I pay processing fee from my bank account?",
-                    "This is great news! But how did you get my number? Should I verify this somewhere?",
-                    "Fantastic! Do I need to share my UPI ID? I use Paytm usually, is that okay?",
-                    "I cant believe this... my friend also got such message. Where should I collect prize?"
-                ],
-                "confused_elderly": [
-                    "I dont undorstand properly... can you explain slowly? Which button should I press?",
-                    "Please help me... I'm not good with phone. Tell me step by step what to do.",
-                    "My son usually helps but he is not here. Can you call me and explain?",
-                    "Wait, let me get my reading glasses... which account you said? The savings one?",
-                    "I want to fix this. Should I go to bank branch or can do from phone only?"
-                ],
-                "cautious_user": [
-                    "I'm not sure about this... can you give me your employee ID to verify?",
-                    "Last time someone tried to cheat me. How do I know this is real? Give me proof.",
-                    "Which department you are calling from exactly? I will call bank directly to confirm.",
-                    "Okay, I will help but first send me official email or SMS from bank number.",
-                    "Let me check... if this is genuine, I will provide details. What verification you need?"
-                ]
-            }
-            responses = fallback_responses.get(persona_key, ["I see... can you explain more clearly?"])
-            return responses[(turn_count - 1) % len(responses)]
+        if llm_reply:
+            logger.info(f"🤖 Agent reply ({persona_key}): {llm_reply}")
+            return llm_reply
+        
+        # Fallback to templates if all LLM providers fail
+        logger.warning("All LLM providers failed - using template fallback")
+        turn_count = len(conversation_history) + 1
+        fallback_responses = {
+            "worried_customer": [
+                # Variant 1: Confused tone
+                "Oh no... I'm really worried. Which account is blocked? I have salary and savings both.",
+                # Variant 2: Compliant tone
+                "This is serious? I will do whatever needed. Should I pay through my PhonePe UPI?",
+                # Variant 3: Cautious tone
+                "Please tell me clearly... which bank you are calling from? I want to verify first.",
+                # Variant 4: Proactive tone
+                "What documents you need? I have my Aadhaar and PAN ready. Where should I send?",
+                # Variant 5: Hesitant tone
+                "Wait... last month also got such message. Is this same issue or new problem?"
+            ],
+            "excited_winner": [
+                # Variant 1: Excited/confused
+                "Really?! I never entered any lottery but if its true, amazing! How do I claim?",
+                # Variant 2: Eager/compliant
+                "Wow! Tell me what to do quickly. Should I pay processing fee from my bank account?",
+                # Variant 3: Excited/cautious
+                "This is great news! But how did you get my number? Should I verify this somewhere?",
+                # Variant 4: Proactive
+                "Fantastic! Do I need to share my UPI ID? I use Paytm usually, is that okay?",
+                # Variant 5: Hesitant excitement
+                "I cant believe this... my friend also got such message. Where should I collect prize?"
+            ],
+            "confused_elderly": [
+                # Variant 1: Very confused
+                "I dont undorstand properly... can you explain slowly? Which button should I press?",
+                # Variant 2: Compliant/helpless
+                "Please help me... I'm not good with phone. Tell me step by step what to do.",
+                # Variant 3: Seeking help
+                "My son usually helps but he is not here. Can you call me and explain?",
+                # Variant 4: Trying to understand
+                "Wait, let me get my reading glasses... which account you said? The savings one?",
+                # Variant 5: Willing but confused
+                "I want to fix this. Should I go to bank branch or can do from phone only?"
+            ],
+            "cautious_user": [
+                # Variant 1: Skeptical
+                "I'm not sure about this... can you give me your employee ID to verify?",
+                # Variant 2: Testing authenticity
+                "Last time someone tried to cheat me. How do I know this is real? Give me proof.",
+                # Variant 3: Seeking verification
+                "Which department you are calling from exactly? I will call bank directly to confirm.",
+                # Variant 4: Conditional compliance
+                "Okay, I will help but first send me official email or SMS from bank number.",
+                # Variant 5: Cautious but willing
+                "Let me check... if this is genuine, I will provide details. What verification you need?"
+            ]
+        }
+        responses = fallback_responses.get(persona_key, ["I see... can you explain more clearly?"])
+        return responses[(turn_count - 1) % len(responses)]
     
     def generate_neutral_reply(self) -> str:
         """Generate neutral reply for non-scam messages - more human and helpful"""

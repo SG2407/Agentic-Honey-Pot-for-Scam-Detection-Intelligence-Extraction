@@ -75,7 +75,11 @@ def send_message(session_id: str, messages: List[Dict]) -> Dict:
         "conversation": messages
     }
     
-    response = requests.post(HONEYPOT_ENDPOINT, json=payload)
+    response = requests.post(
+        HONEYPOT_ENDPOINT,
+        json=payload,
+        headers={"x-api-key": "team_recursives"}  # PRIORITY 1: API key required
+    )
     return {
         "status_code": response.status_code,
         "response": response.json() if response.status_code == 200 else None,

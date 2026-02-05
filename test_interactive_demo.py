@@ -86,7 +86,10 @@ def send_message(session_id: str, scammer_message: str, conversation_history: Li
         response = requests.post(
             f"{BASE_URL}/honeypot",
             json=payload,
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": "team_recursives"  # PRIORITY 1: API key required
+            },
             timeout=30
         )
         

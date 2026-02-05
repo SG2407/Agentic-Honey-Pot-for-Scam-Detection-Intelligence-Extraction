@@ -2,8 +2,8 @@
 
 import os
 import re
-from groq import Groq
 from app.models import ScamDetectionResult
+from app.llm_provider import LLMManager  # PRIORITY 2: Abstract LLM provider
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,19 +13,8 @@ class ScamDetector:
     """Multi-layer scam detection: Hard rules → LLM → Pattern fallback"""
     
     def __init__(self):
-        """Initialize ScamDetector with lazy Groq client"""
-        self._groq_client = None
-    
-    @property
-    def groq_client(self):
-        """Lazy initialization of Groq client"""
-        if self._groq_client is None:
-            api_key = os.getenv("GROQ_API_KEY")
-            if not api_key:
-                logger.warning("GROQ_API_KEY not set - LLM detection will be unavailable")
-                return None
-            self._groq_client = Groq(api_key=api_key)
-        return self._groq_client
+        """Initialize ScamDetector with LLM manager (PRIORITY 2)"""
+        self.llm_manager = LLMManager()  # Supports OpenRouter + Groq with fallback
     
     # Hard scam patterns - GUARANTEED detection (confidence = 1.0)
     HARD_PATTERNS = [
@@ -121,13 +110,9 @@ class ScamDetector:
         return None  # No hard pattern matched
     
     def _detect_with_llm(self, message_text: str, conversation_context: str) -> ScamDetectionResult:
-        """Use Groq LLM for scam detection (secondary layer)"""
-        if not self.groq_client:
-            logger.warning("Groq client not available - skipping LLM detection")
-            return None
+        """Use LLM for scam detection (secondary layer) - PRIORITY 2: OpenRouter + Groq"""
         
-        try:
-            prompt = f"""You are a scam detection expert. Analyze this message and determine if it's a scam attempt.
+        prompt = f"""You are a scam detection expert. Analyze this message and determine if it's a scam attempt.
 
 Current message: {message_text}
 
@@ -146,14 +131,19 @@ CONFIDENCE: 0.0-1.0
 TYPE: credential_phishing/financial_threat/prize_scam/impersonation/legitimate
 REASONING: Brief explanation"""
 
-            response = self.groq_client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=200
-            )
-            
-            result_text = response.choices[0].message.content.strip()
+        # PRIORITY 2: Use LLM manager with automatic fallback
+        result_text = self.llm_manager.generate(
+            prompt=prompt,
+            model=None,  # Let provider choose model
+            temperature=0.1,
+            max_tokens=200
+        )
+        
+        if not result_text:
+            logger.warning("LLM failed, using pattern-based fallback")
+            return None
+        
+        try:
             logger.info(f"LLM Response: {result_text}")
             
             # Parse LLM response

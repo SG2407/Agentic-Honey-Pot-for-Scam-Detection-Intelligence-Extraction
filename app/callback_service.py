@@ -7,8 +7,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# GUVI callback endpoint
-CALLBACK_URL = os.getenv("CALLBACK_URL", "https://hackathon.guvi.in/api/updateHoneyPotFinalResult")
+# GUVI callback endpoint (MUST match .env variable name: GUVI_CALLBACK_URL)
+CALLBACK_URL = os.getenv("GUVI_CALLBACK_URL", "https://hackathon.guvi.in/api/updateHoneyPotFinalResult")
 
 
 class CallbackService:

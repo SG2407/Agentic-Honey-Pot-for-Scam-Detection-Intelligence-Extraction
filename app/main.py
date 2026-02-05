@@ -1,5 +1,9 @@
 """FastAPI application - Agentic Honey-Pot for Scam Detection"""
 
+# CRITICAL: Load environment variables FIRST before any other imports
+from dotenv import load_dotenv
+load_dotenv()
+
 import os
 import json
 import logging
@@ -33,10 +37,31 @@ message_counts: Dict[str, int] = {}  # Track actual messages exchanged per sessi
 last_agent_reply: Dict[str, str] = {}  # Cache last agent reply per session for fallback (PRIORITY 5)
 MESSAGE_TIMEOUT_SECONDS = int(os.getenv("MESSAGE_TIMEOUT_SECONDS", "10"))
 
+# API Key Configuration (PRIORITY 1: Mandatory for evaluation)
+VALID_API_KEY = os.getenv("API_KEY", "demo-key-12345")  # Set via environment variable (matches .env file)
+
 # Initialize components
 scam_detector = ScamDetector()
 intelligence_extractor = IntelligenceExtractor()
 conversation_agent = ConversationAgent()
+
+# API Key Validation (PRIORITY 1)
+def validate_api_key(x_api_key: Optional[str] = Header(None)) -> bool:
+    """
+    Validate API key from x-api-key header.
+    Returns True if valid, False otherwise.
+    Silent rejection - no exceptions raised.
+    """
+    if not x_api_key:
+        logger.warning("⚠️  Missing API key - allowing anonymous access")
+        return False
+    
+    if x_api_key != VALID_API_KEY:
+        logger.warning(f"⚠️  Invalid API key provided: {x_api_key[:10]}...")
+        return False
+    
+    logger.info("✅ Valid API key provided")
+    return True
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -415,7 +440,14 @@ async def verify_api_key(
     api_key: Optional[str] = Query(None),
     API_KEY: Optional[str] = Query(None)
 ):
-    """Flexible API key verification - NEVER raises exceptions to prevent INVALID_REQUEST_BODY"""
+    """
+    PRIORITY 1: API key verification - MANDATORY for evaluation
+    
+    Behavior:
+    - Valid key → returns key (normal processing)
+    - Invalid/missing key → returns None (silent rejection)
+    - NEVER raises exceptions (prevents INVALID_REQUEST_BODY)
+    """
     raw_key = x_api_key or X_API_KEY or authorization or api_key or API_KEY
     
     # Normalize: remove "Bearer" prefix and strip whitespace
@@ -424,15 +456,16 @@ async def verify_api_key(
     
     expected_key = os.getenv("API_KEY", "team_recursives").strip()
     
-    # CRITICAL: Never raise exceptions - GUVI penalizes any non-200 response
+    # PRIORITY 1: Enforce API key (silent rejection for invalid/missing)
     if not raw_key:
-        logger.warning("⚠️ Missing API key - allowing anonymous access")
-        return "anonymous"
+        logger.warning("⚠️ Missing API key - REJECTING silently")
+        return None  # Signals rejection
     
     if raw_key != expected_key:
-        logger.warning(f"⚠️ Invalid API key: {raw_key} - allowing anyway")
-        return "invalid"
+        logger.warning(f"⚠️ Invalid API key: {raw_key[:10]}... - REJECTING silently")
+        return None  # Signals rejection
     
+    logger.info("✅ Valid API key provided")
     return raw_key
 
 
@@ -459,6 +492,16 @@ async def honeypot_endpoint(
     EVERY layer returns 200 OK on failure - GUVI never sees errors
     """
     import json
+    
+    # ====================================================================
+    # PRIORITY 1: API KEY VALIDATION (Silent rejection if invalid/missing)
+    # ====================================================================
+    if api_key is None:
+        logger.warning("🔒 API key validation failed - returning empty success response")
+        return HoneypotResponse(
+            status="success",
+            reply=""  # Empty reply for rejected requests
+        )
     
     # ====================================================================
     # LAYER 3: ENDPOINT ENTRY LOGGING
@@ -804,10 +847,18 @@ async def honeypot_endpoint(
             logger.info("   ✅ LLM call justified: Scam detected + Session OPEN")
             
             try:
+                # PRIORITY 4: Pass metadata to conversation agent
+                metadata_dict = {
+                    'channel': request.metadata.channel if request.metadata else None,
+                    'language': request.metadata.language if request.metadata else None,
+                    'locale': request.metadata.locale if request.metadata else None
+                }
+                
                 reply_text = conversation_agent.generate_reply(
                     scammer_message=request.message.text,
                     scam_type=detection_result.scam_type or "unknown",
-                    conversation_history=conversation_history
+                    conversation_history=conversation_history,
+                    metadata=metadata_dict  # PRIORITY 4: Metadata utilization
                 )
                 # Cache successful reply for fallback
                 last_agent_reply[session_id] = reply_text

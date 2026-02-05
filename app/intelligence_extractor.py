@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 class IntelligenceExtractor:
     """Extract bank accounts, UPI IDs, phone numbers, and phishing links"""
     
-    # Enhanced regex patterns with precision rules
+    # PRIORITY 3: Enhanced regex patterns with precision rules
     BANK_ACCOUNT_PATTERN = r'\b\d{9,18}\b'  # 9-18 digit numbers
-    UPI_ID_PATTERN = r'\b[\w\.-]+@(?:paytm|phonepe|googlepay|gpay|ybl|oksbi|okaxis|okicici|okhdfcbank|okbizaxis|ikwik|apl|axl|barodampay|ibl|yesbank)\b'  # UPI with valid PSPs
-    PHONE_PATTERN = r'(?:(?:\+91[\s-]?)|(?:0)?)?[6-9]\d{9}\b'  # Indian phone numbers with flexible formatting
+    # PRIORITY 3: Expanded UPI pattern - name@bank | name@upi | phone@upi
+    UPI_ID_PATTERN = r'\b[\w\.-]+@(?:paytm|phonepe|googlepay|gpay|ybl|oksbi|okaxis|okicici|okhdfcbank|okbizaxis|ikwik|apl|axl|barodampay|ibl|yesbank|upi|bank)\b'
+    # PRIORITY 3: Negative lookahead to avoid matching common patterns
+    PHONE_PATTERN = r'(?<!\d)(?:(?:\+91[\s-]?)|(?:0)?)?[6-9]\d{9}(?!\d)'  # Indian phone with negative lookahead
     PHISHING_LINK_PATTERN = r'https?://[^\s]+'  # URLs
     
     # Context keywords to distinguish number types
@@ -64,19 +66,36 @@ class IntelligenceExtractor:
         return list(set(valid_accounts))  # Remove duplicates
     
     def extract_upi_ids(self, text: str) -> List[str]:
-        """Extract UPI IDs (user@psp format) with boundary checks"""
-        # Use improved regex that only matches valid PSPs
+        """
+        PRIORITY 3: Extract UPI IDs with expanded patterns
+        Matches: name@bank | name@upi | phone@upi
+        Conservative extraction (false negatives > false positives)
+        """
+        # Use improved regex that matches valid PSPs + generic @upi/@bank
         matches = re.findall(self.UPI_ID_PATTERN, text, re.IGNORECASE)
         
-        # Additional validation: UPI format is typically 4-50 characters
-        valid_upis = [
-            upi for upi in matches 
-            if 4 <= len(upi) <= 50 and '@' in upi
-        ]
+        # PRIORITY 3: Strict validation
+        valid_upis = []
+        for upi in matches:
+            # UPI format: 4-50 characters, must have @ symbol
+            if 4 <= len(upi) <= 50 and '@' in upi:
+                # Split and validate parts
+                parts = upi.split('@')
+                if len(parts) == 2:
+                    username, domain = parts
+                    # Username: 3-50 chars (alphanumeric, dot, dash, underscore)
+                    # Domain: valid PSP or generic (upi, bank)
+                    if 3 <= len(username) <= 50 and len(domain) >= 2:
+                        valid_upis.append(upi.lower())  # Normalize to lowercase
+        
         return list(set(valid_upis))
     
     def extract_phone_numbers(self, text: str) -> List[str]:
-        """Extract Indian phone numbers with strict validation"""
+        """
+        PRIORITY 3: Extract Indian phone numbers with strict validation
+        Uses negative lookahead to avoid partial matches
+        Conservative: false negatives > false positives
+        """
         matches = re.findall(self.PHONE_PATTERN, text)
         normalized = []
         
@@ -88,7 +107,7 @@ class IntelligenceExtractor:
             if phone.startswith('+91'):
                 phone = phone[3:]
             
-            # Validate: must be exactly 10 digits starting with 6-9
+            # PRIORITY 3: Strict validation - exactly 10 digits starting with 6-9
             if len(phone) == 10 and phone[0] in '6789' and phone.isdigit():
                 normalized.append(f"+91{phone}")
         
