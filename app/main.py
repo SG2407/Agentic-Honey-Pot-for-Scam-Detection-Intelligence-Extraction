@@ -35,7 +35,19 @@ callback_sent_sessions: Set[str] = set()  # Sessions that received callback (ses
 last_message_time: Dict[str, datetime] = {}  # Track last message time for timeout
 message_counts: Dict[str, int] = {}  # Track actual messages exchanged per session
 last_agent_reply: Dict[str, str] = {}  # Cache last agent reply per session for fallback (PRIORITY 5)
+session_scam_types: Dict[str, str] = {}  # Track highest priority scam type per session (NEVER downgrades)
 MESSAGE_TIMEOUT_SECONDS = int(os.getenv("MESSAGE_TIMEOUT_SECONDS", "10"))
+
+# Scam type priority hierarchy (higher number = higher priority, NEVER downgrades)
+SCAM_TYPE_PRIORITY = {
+    "credential_phishing": 4,  # Highest priority - OTP, PIN, Aadhaar, PAN, password
+    "financial_threat": 3,     # Account blocked, suspension, penalty
+    "impersonation": 2,        # Government/bank impersonation
+    "reward_scam": 1,          # Prize/lottery scams
+    "unknown": 0,              # Lowest priority
+    "pattern_detected": 0,     # Same as unknown
+    "legitimate": 0            # Not a scam
+}
 
 # API Key Configuration (PRIORITY 1: Mandatory for evaluation)
 VALID_API_KEY = os.getenv("API_KEY", "demo-key-12345")  # Set via environment variable (matches .env file)
@@ -735,6 +747,29 @@ async def honeypot_endpoint(
         logger.info(f"   Confidence: {detection_result.confidence}")
         logger.info(f"   Type: {detection_result.scam_type}")
         logger.info(f"   Reasoning: {detection_result.reasoning}")
+        
+        # PRIORITY 1 FIX: Lock session scam type to highest priority detected (never downgrade)
+        if detection_result.is_scam and detection_result.scam_type:
+            current_type = detection_result.scam_type
+            current_priority = SCAM_TYPE_PRIORITY.get(current_type, 0)
+            
+            if session_id in session_scam_types:
+                existing_type = session_scam_types[session_id]
+                existing_priority = SCAM_TYPE_PRIORITY.get(existing_type, 0)
+                
+                if current_priority > existing_priority:
+                    logger.info(f"🔼 UPGRADING scam type: {existing_type} → {current_type} (priority {existing_priority} → {current_priority})")
+                    session_scam_types[session_id] = current_type
+                    detection_result.scam_type = current_type
+                elif current_priority < existing_priority:
+                    logger.info(f"🔒 LOCKED to higher priority: Keeping {existing_type} (priority {existing_priority}) over {current_type} (priority {current_priority})")
+                    detection_result.scam_type = existing_type  # Override with locked type
+                else:
+                    logger.info(f"✅ Same priority: Keeping {existing_type} (priority {existing_priority})")
+                    detection_result.scam_type = existing_type
+            else:
+                logger.info(f"🆕 First scam detection: Locking session to type '{current_type}' (priority {current_priority})")
+                session_scam_types[session_id] = current_type
         
         # ====================================================================
         # STEP 3: Check timeout (ONLY for scam sessions)

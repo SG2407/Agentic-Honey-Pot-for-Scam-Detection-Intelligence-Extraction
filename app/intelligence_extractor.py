@@ -9,15 +9,24 @@ logger = logging.getLogger(__name__)
 
 
 class IntelligenceExtractor:
-    """Extract bank accounts, UPI IDs, phone numbers, and phishing links"""
+    """Extract bank accounts, UPI IDs, phone numbers, and phishing links with strict validation"""
     
-    # PRIORITY 3: Enhanced regex patterns with precision rules
+    # PRIORITY 1: Enhanced patterns with Indian-specific validation
     BANK_ACCOUNT_PATTERN = r'\b\d{9,18}\b'  # 9-18 digit numbers
-    # PRIORITY 3: Expanded UPI pattern - name@bank | name@upi | phone@upi
-    UPI_ID_PATTERN = r'\b[\w\.-]+@(?:paytm|phonepe|googlepay|gpay|ybl|oksbi|okaxis|okicici|okhdfcbank|okbizaxis|ikwik|apl|axl|barodampay|ibl|yesbank|upi|bank)\b'
-    # PRIORITY 3: Negative lookahead to avoid matching common patterns
-    PHONE_PATTERN = r'(?<!\d)(?:(?:\+91[\s-]?)|(?:0)?)?[6-9]\d{9}(?!\d)'  # Indian phone with negative lookahead
-    PHISHING_LINK_PATTERN = r'https?://[^\s]+'  # URLs
+    
+    # PAN card: [A-Z]{5}[0-9]{4}[A-Z] (e.g., ABCDE1234F)
+    PAN_PATTERN = r'\b[A-Z]{5}[0-9]{4}[A-Z]\b'
+    
+    # Aadhaar: 12 digits with optional spaces (e.g., 1234 5678 9012)
+    AADHAAR_PATTERN = r'\b\d{4}\s?\d{4}\s?\d{4}\b'
+    
+    # UPI: strict format ^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}$
+    UPI_ID_PATTERN = r'\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b'
+    
+    # Indian phone: +91 followed by 10 digits starting with 6-9
+    PHONE_PATTERN = r'(?<!\d)(?:(?:\+91[\s-]?)|(?:0)?)?[6-9]\d{9}(?!\d)'
+    
+    PHISHING_LINK_PATTERN = r'https?://[^\s]+'
     
     # Context keywords to distinguish number types
     BANK_ACCOUNT_KEYWORDS = ['account', 'ifsc', 'savings', 'current', 'bank', 'a/c', 'acct']
@@ -31,7 +40,7 @@ class IntelligenceExtractor:
     ]
     
     def extract_bank_accounts(self, text: str, exclude_numbers: List[str] = None) -> List[str]:
-        """Extract bank account numbers (9-18 digits) with context-aware filtering"""
+        """Extract bank account numbers with length validation and phone/Aadhaar disambiguation"""
         if exclude_numbers is None:
             exclude_numbers = []
         
@@ -39,79 +48,118 @@ class IntelligenceExtractor:
         valid_accounts = []
         
         for acc in matches:
-            # Skip if already identified as phone number
+            # Skip if already identified as phone/PAN/Aadhaar
             if acc in exclude_numbers:
                 continue
             
-            # For 10-digit numbers: distinguish phones (6-9 prefix) from bank accounts
-            if len(acc) == 10:
+            acc_len = len(acc)
+            
+            # Length validation: Indian bank accounts are typically 9-18 digits
+            if acc_len < 9 or acc_len > 18:
+                continue
+            
+            # For 10-digit numbers: strict disambiguation
+            if acc_len == 10:
                 if acc[0] in '6789':
-                    # Likely phone - only include if bank context present
+                    # Likely phone - only include if explicit bank context
                     text_lower = text.lower()
                     acc_pos = text_lower.find(acc)
                     if acc_pos >= 0:
                         context_window = text_lower[max(0, acc_pos-30):min(len(text_lower), acc_pos+len(acc)+30)]
                         if any(kw in context_window for kw in self.BANK_ACCOUNT_KEYWORDS):
                             valid_accounts.append(acc)
-                    # Skip if no bank context (definitely phone)
+                    continue  # Skip if no bank context
                 else:
                     # Starts with 0-5: Not a valid phone, likely bank account
                     valid_accounts.append(acc)
-                continue
             
-            # 9-digit or 11-18 digit numbers: likely bank accounts
-            if len(acc) >= 9:
+            # 12-digit: Could be Aadhaar - skip if matches Aadhaar pattern
+            elif acc_len == 12:
+                # Check if it's formatted like Aadhaar (might have been without spaces)
+                if re.match(r'^\d{12}$', acc):
+                    # Skip - likely Aadhaar without spaces
+                    continue
+                valid_accounts.append(acc)
+            
+            # 9, 11, 13-18 digits: likely valid bank accounts
+            else:
                 valid_accounts.append(acc)
         
-        return list(set(valid_accounts))  # Remove duplicates
+        return list(set(valid_accounts))
     
     def extract_upi_ids(self, text: str) -> List[str]:
         """
-        PRIORITY 3: Extract UPI IDs with expanded patterns
-        Matches: name@bank | name@upi | phone@upi
-        Conservative extraction (false negatives > false positives)
+        PRIORITY 1: Extract UPI IDs with strict format validation
+        Pattern: ^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}$
         """
-        # Use improved regex that matches valid PSPs + generic @upi/@bank
         matches = re.findall(self.UPI_ID_PATTERN, text, re.IGNORECASE)
         
-        # PRIORITY 3: Strict validation
         valid_upis = []
         for upi in matches:
-            # UPI format: 4-50 characters, must have @ symbol
-            if 4 <= len(upi) <= 50 and '@' in upi:
-                # Split and validate parts
-                parts = upi.split('@')
-                if len(parts) == 2:
-                    username, domain = parts
-                    # Username: 3-50 chars (alphanumeric, dot, dash, underscore)
-                    # Domain: valid PSP or generic (upi, bank)
-                    if 3 <= len(username) <= 50 and len(domain) >= 2:
-                        valid_upis.append(upi.lower())  # Normalize to lowercase
+            # Length validation: 4-50 characters total
+            if not (4 <= len(upi) <= 50):
+                continue
+            
+            # Split and validate parts
+            parts = upi.split('@')
+            if len(parts) != 2:
+                continue
+            
+            username, domain = parts
+            
+            # Username validation: 2+ chars, alphanumeric with .-_
+            if len(username) < 2 or not re.match(r'^[a-zA-Z0-9.\-_]+$', username):
+                continue
+            
+            # Domain validation: 2+ chars, alphabetic only
+            if len(domain) < 2 or not re.match(r'^[a-zA-Z]+$', domain):
+                continue
+            
+            # Additional robustness: common PSPs (paytm, phonepe, gpay, ybl, etc.)
+            valid_upis.append(upi.lower())
         
         return list(set(valid_upis))
     
     def extract_phone_numbers(self, text: str) -> List[str]:
         """
-        PRIORITY 3: Extract Indian phone numbers with strict validation
-        Uses negative lookahead to avoid partial matches
-        Conservative: false negatives > false positives
+        PRIORITY 1: Extract Indian phone numbers with strict validation
+        Format: +91 followed by 10 digits starting with 6-9
         """
         matches = re.findall(self.PHONE_PATTERN, text)
         normalized = []
         
         for phone in matches:
-            # Clean formatting (remove spaces, hyphens, leading zeros)
-            phone = phone.replace(' ', '').replace('-', '').lstrip('0')
+            # Clean formatting (remove spaces, hyphens)
+            phone = phone.replace(' ', '').replace('-', '')
+            
+            # Remove leading zeros
+            phone = phone.lstrip('0')
             
             # Remove +91 prefix for validation
             if phone.startswith('+91'):
                 phone = phone[3:]
+            elif phone.startswith('91') and len(phone) == 12:
+                phone = phone[2:]
             
-            # PRIORITY 3: Strict validation - exactly 10 digits starting with 6-9
+            # Strict validation: exactly 10 digits starting with 6-9
             if len(phone) == 10 and phone[0] in '6789' and phone.isdigit():
                 normalized.append(f"+91{phone}")
         
-        return list(set(normalized))  # Remove duplicates
+        return list(set(normalized))
+    
+    def extract_pan_cards(self, text: str) -> List[str]:
+        """Extract PAN card numbers: [A-Z]{5}[0-9]{4}[A-Z]"""
+        matches = re.findall(self.PAN_PATTERN, text)
+        return list(set(matches))
+    
+    def extract_aadhaar_numbers(self, text: str) -> List[str]:
+        """Extract Aadhaar numbers: 12 digits with optional spaces"""
+        matches = re.findall(self.AADHAAR_PATTERN, text)
+        # Normalize: remove spaces
+        normalized = [match.replace(' ', '') for match in matches]
+        # Validate: exactly 12 digits
+        validated = [num for num in normalized if len(num) == 12 and num.isdigit()]
+        return list(set(validated))
     
     def extract_phishing_links(self, text: str) -> List[str]:
         """Extract URLs (potential phishing links)"""
@@ -146,14 +194,27 @@ class IntelligenceExtractor:
         # Extract phones FIRST to avoid double-counting with bank accounts
         phone_numbers = self.extract_phone_numbers(combined_text)
         
-        # Extract bank accounts EXCLUDING numbers already identified as phones
-        phone_numbers_raw = [p.replace('+91', '') for p in phone_numbers]
-        bank_accounts = self.extract_bank_accounts(combined_text, exclude_numbers=phone_numbers_raw)
+        # Extract PAN and Aadhaar (identity documents)
+        pan_cards = self.extract_pan_cards(combined_text)
+        aadhaar_numbers = self.extract_aadhaar_numbers(combined_text)
+        
+        # Build exclusion list: phones + PAN + Aadhaar
+        exclude_numbers = [p.replace('+91', '') for p in phone_numbers]
+        exclude_numbers.extend(aadhaar_numbers)
+        
+        # Extract bank accounts EXCLUDING phones/Aadhaar
+        bank_accounts = self.extract_bank_accounts(combined_text, exclude_numbers=exclude_numbers)
         
         # Extract other intelligence
         upi_ids = self.extract_upi_ids(combined_text)
         phishing_links = self.extract_phishing_links(combined_text)
         suspicious_keywords = self.extract_suspicious_keywords(combined_text)
+        
+        # Add PAN/Aadhaar to suspicious keywords if found (for logging)
+        if pan_cards:
+            suspicious_keywords.extend([f"PAN:{p}" for p in pan_cards])
+        if aadhaar_numbers:
+            suspicious_keywords.extend([f"Aadhaar:{a}" for a in aadhaar_numbers])
         
         # Log findings
         if bank_accounts:

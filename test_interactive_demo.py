@@ -62,7 +62,17 @@ def print_intelligence(intel: Dict):
     if intel.get('phishing_links'):
         print(f"{Color.MAGENTA}   🔗 Phishing Links: {', '.join(intel['phishing_links'])}{Color.END}")
     if intel.get('suspicious_keywords'):
-        print(f"{Color.MAGENTA}   🔍 Keywords: {', '.join(intel['suspicious_keywords'][:5])}{Color.END}")
+        # Filter out PAN/Aadhaar from keywords for cleaner display
+        keywords = [k for k in intel['suspicious_keywords'] if not k.startswith(('PAN:', 'Aadhaar:'))]
+        if keywords:
+            print(f"{Color.MAGENTA}   🔍 Keywords: {', '.join(keywords[:5])}{Color.END}")
+        # Show PAN/Aadhaar separately if detected
+        pan_found = [k.split(':')[1] for k in intel['suspicious_keywords'] if k.startswith('PAN:')]
+        aadhaar_found = [k.split(':')[1] for k in intel['suspicious_keywords'] if k.startswith('Aadhaar:')]
+        if pan_found:
+            print(f"{Color.MAGENTA}   🆔 PAN Cards: {', '.join(pan_found)}{Color.END}")
+        if aadhaar_found:
+            print(f"{Color.MAGENTA}   🆔 Aadhaar Numbers: {', '.join(aadhaar_found)}{Color.END}")
 
 def send_message(session_id: str, scammer_message: str, conversation_history: List[Dict] = None) -> Dict:
     """Send message to honeypot and get response"""
@@ -211,18 +221,33 @@ def test_bank_account_threat():
     run_conversation(scenario, session_id, messages, delay=1.5)
 
 def test_impersonation_tax():
-    """Test government impersonation scenario"""
-    scenario = "Impersonation - Income Tax Department"
+    """Test government impersonation scenario with PAN extraction"""
+    scenario = "Impersonation - Income Tax Department (PAN Test)"
     session_id = f"test-tax-{int(time.time())}"
     
     messages = [
         "Income Tax Department: You have pending refund of Rs. 25,000.",
         "To process your refund, click this link: http://fake-tax-refund.com/verify",
-        "Enter your PAN card and bank account details to receive the refund.",
-        "This refund will expire in 48 hours if not claimed.",
+        "Enter your PAN card like ABCDE1234F and bank account 1234567890123 to receive the refund.",
+        "This refund will expire in 48 hours if not claimed. Your PAN PQRST5678Z is already verified.",
     ]
     
     run_conversation(scenario, session_id, messages, delay=1.5)
+
+def test_upi_and_phone_disambiguation():
+    """Test strict UPI validation and phone number disambiguation"""
+    scenario = "UPI & Phone Disambiguation Test"
+    session_id = f"test-upi-phone-{int(time.time())}"
+    
+    messages = [
+        "Send money to merchant.name123@paytm or user_123@phonepe for prize claim.",
+        "Invalid UPIs like @paytm or user@ should not be extracted.",
+        "Valid UPIs: john.doe@ybl, alice@okaxis, bob123@gpay",
+        "Phone: 9876543210 should not be confused with account: 98765432109876",
+        "Call 919988776655 or +91 8877665544 for verification.",
+    ]
+    
+    run_conversation(scenario, session_id, messages, delay=1.0)
 
 def test_legitimate_message():
     """Test legitimate message handling"""
@@ -236,19 +261,34 @@ def test_legitimate_message():
     
     run_conversation(scenario, session_id, messages, delay=1.0)
 
+def test_intelligence_precision():
+    """Test comprehensive intelligence extraction with all new features"""
+    scenario = "Intelligence Precision - All Types"
+    session_id = f"test-precision-{int(time.time())}"
+    
+    messages = [
+        "Your PAN ABCDE1234F and Aadhaar 1234 5678 9012 need verification.",
+        "Bank account 123456789012 (not Aadhaar 234567890123) needs update.",
+        "Pay Rs 500 to valid.user@paytm or merchant_123@ybl - NOT to @invalid or bad@",
+        "Contact 9876543210 or 919988776655 - these are phones, not accounts like 98765432109876.",
+        "Visit http://fake-gov-site.com/verify to complete verification immediately.",
+    ]
+    
+    run_conversation(scenario, session_id, messages, delay=1.0)
+
 def test_multi_turn_engagement():
-    """Test extended conversation with multiple intelligence pieces"""
-    scenario = "Extended Engagement - Intelligence Collection"
+    """Test extended conversation with multiple intelligence pieces including Aadhaar"""
+    scenario = "Extended Engagement - Intelligence Collection (Aadhaar Test)"
     session_id = f"test-multi-{int(time.time())}"
     
     messages = [
-        "Your Aadhaar card is suspended. Verify immediately to avoid legal action.",
+        "Your Aadhaar card 1234 5678 9012 is suspended. Verify immediately to avoid legal action.",
         "This is from government office. You must act now or face penalties.",
-        "Send me your Aadhaar number and mobile number for verification.",
-        "Also need your bank account 9876543210 details to process.",
-        "You can also pay verification fee via UPI at scammer@paytm",
-        "For urgent help, call me at 8765432109 right now.",
-        "Still waiting... Your case will be filed if you don't respond.",
+        "Send me your Aadhaar 234567890123 and mobile number 9876543210 for verification.",
+        "Also need your bank account 98765432109876 details to process.",
+        "You can also pay verification fee via UPI at scammer@paytm or realuser@ybl",
+        "For urgent help, call me at 918765432109 right now.",
+        "Still waiting... Your PAN card ABCDE1234F will be blocked too if you don't respond.",
     ]
     
     run_conversation(scenario, session_id, messages, delay=1.0)
@@ -270,6 +310,8 @@ def main():
     test_prize_scam_with_upi()
     test_bank_account_threat()
     test_impersonation_tax()
+    test_intelligence_precision()
+    test_upi_and_phone_disambiguation()
     test_multi_turn_engagement()
     test_legitimate_message()
     
@@ -279,10 +321,15 @@ def main():
     print_success("System testing complete!")
     print_info("Check the server logs to verify:")
     print_info("  ✅ Enhanced engagement quality (follow-up questions, hesitation)")
-    print_info("  ✅ Precise intelligence extraction (context-aware)")
+    print_info("  ✅ Precise intelligence extraction with Indian validation:")
+    print_info("      • PAN cards: [A-Z]{5}[0-9]{4}[A-Z]")
+    print_info("      • Aadhaar: 12 digits with optional spaces")
+    print_info("      • UPI: strict format validation (username@domain)")
+    print_info("      • Bank accounts: exclude Aadhaar, disambiguate from phones")
+    print_info("      • Phones: +91 validation, 91 prefix handling")
     print_info("  ✅ Accurate scam classification (11 patterns)")
     print_info("  ✅ Session lifecycle discipline (hard stop when closed)")
-    print_info("  ✅ LLM optimization (caching + fallbacks)")
+    print_info("  ✅ LLM optimization (three-tier fallback)")
     print_info("  ✅ Persona consistency (detailed traits)")
     print()
     print(f"{Color.BOLD}{Color.GREEN}🚀 System is ready for GUVI evaluation!{Color.END}\n")
