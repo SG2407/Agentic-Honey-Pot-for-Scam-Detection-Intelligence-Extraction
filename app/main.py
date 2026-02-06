@@ -377,6 +377,14 @@ async def process_message_background(
         # Send callback if conditions met
         if detection_result.is_scam and has_intel:
             if session_id not in callback_sent_sessions:
+                logger.info(f"🎯 Callback conditions met for session {session_id}:")
+                logger.info(f"   ✓ Scam detected: {detection_result.scam_type} (confidence: {detection_result.confidence})")
+                logger.info(f"   ✓ Intelligence extracted: {has_intel}")
+                logger.info(f"   ✓ Bank accounts: {len(intelligence.bankAccounts)}")
+                logger.info(f"   ✓ UPI IDs: {len(intelligence.upiIds)}")
+                logger.info(f"   ✓ Phone numbers: {len(intelligence.phoneNumbers)}")
+                logger.info(f"   ✓ Phishing links: {len(intelligence.phishingLinks)}")
+                
                 callback_sent_sessions.add(session_id)
                 
                 from app.models import CallbackPayload
@@ -395,10 +403,17 @@ async def process_message_background(
                         CallbackService.send_final_result(payload),
                         timeout=8.0
                     )
+                    logger.info(f"✅ Callback sent successfully for session {session_id}")
                 except asyncio.TimeoutError:
-                    logger.error(f"Callback timeout: {session_id}")
+                    logger.error(f"❌ Callback timeout: {session_id}")
                 except Exception as e:
-                    logger.error(f"Callback error: {session_id}")
+                    logger.error(f"❌ Callback error for {session_id}: {str(e)[:100]}")
+            else:
+                logger.info(f"⏭️  Callback already sent for session {session_id}, skipping")
+        else:
+            logger.info(f"⏸️  Callback NOT sent for session {session_id}:")
+            logger.info(f"   - Scam detected: {detection_result.is_scam}")
+            logger.info(f"   - Has intelligence: {has_intel}")
         
     except Exception as e:
         logger.error(f"Background error: {session_id}")
@@ -502,23 +517,40 @@ async def honeypot_endpoint(
         message_counts[session_id] = 0
     message_counts[session_id] += 1
     
-    # Generate immediate response (pattern-based)
-    message_lower = request.message.text.lower()
-    
-    if any(word in message_lower for word in ['otp', 'pin', 'password', 'cvv']):
-        reply = "I need to check with my son first. He usually helps me with these things."
-    elif any(word in message_lower for word in ['account', 'suspended', 'blocked', 'verify']):
-        reply = "Wait, which account? I have multiple accounts. Can you clarify?"
-    elif any(word in message_lower for word in ['prize', 'won', 'winner', 'congratulations']):
-        reply = "Really? I didn't participate in any contest. Are you sure it's for me?"
-    elif any(word in message_lower for word in ['urgent', 'immediately', 'now', 'asap']):
-        reply = "I'm a bit confused. Can you explain this more slowly?"
-    elif any(word in message_lower for word in ['bank', 'upi', 'payment', 'transfer']):
-        reply = "I don't usually share these details online. Is this really necessary?"
-    elif any(word in message_lower for word in ['aadhaar', 'pan', 'government', 'tax']):
-        reply = "I need to verify this first. How do I know this is genuine?"
-    else:
-        reply = "I'm not sure I understand. Could you explain what you need?"
+    # Generate immediate response using LLM conversation agent
+    try:
+        # Quick scam detection (with timeout) to determine scam type
+        detection_result = await asyncio.wait_for(
+            asyncio.to_thread(
+                scam_detector.analyze_message,
+                request.message.text,
+                conversation_history
+            ),
+            timeout=2.0
+        )
+        
+        # Use detected scam type or default
+        scam_type = detection_result.scam_type if detection_result.is_scam else "unknown"
+        
+        # Generate reply using conversation agent (LLM-based)
+        reply = await asyncio.wait_for(
+            asyncio.to_thread(
+                conversation_agent.generate_reply,
+                request.message.text,
+                scam_type,
+                conversation_history,
+                request.metadata
+            ),
+            timeout=2.5
+        )
+        
+    except asyncio.TimeoutError:
+        logger.warning(f"LLM timeout for session {session_id} - using fallback")
+        # Fallback to simple acknowledgment
+        reply = "I understand. Could you explain that again?"
+    except Exception as e:
+        logger.error(f"Reply generation failed for session {session_id}: {str(e)[:100]}")
+        reply = "I'm here. What do you need?"
     
     return HoneypotResponse(status="success", reply=reply)
 
