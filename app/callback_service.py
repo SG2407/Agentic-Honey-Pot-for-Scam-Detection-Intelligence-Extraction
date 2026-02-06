@@ -22,11 +22,16 @@ class CallbackService:
         ALWAYS includes all 5 intelligence fields (even if empty)
         """
         try:
-            # Use model_dump to get dict - KEEP ALL FIELDS (including empty arrays)
-            payload_dict = payload.model_dump()
+            # Use model_dump to get dict - EXPLICITLY include ALL fields
+            payload_dict = payload.model_dump(
+                mode='json',
+                exclude_none=False,
+                by_alias=True
+            )
             
             # Log the complete payload being sent
             logger.info(f"📤 Sending callback for session: {payload.sessionId}")
+            logger.info(f"   Complete payload dict keys: {list(payload_dict.keys())}")
             logger.info(f"   Complete payload: {payload_dict}")
             logger.info(f"   Scam detected: {payload.scamDetected}")
             logger.info(f"   Messages exchanged: {payload.totalMessagesExchanged}")
