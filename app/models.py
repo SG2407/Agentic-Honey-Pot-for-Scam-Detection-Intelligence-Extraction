@@ -164,12 +164,9 @@ class CallbackPayload(BaseModel):
     """Final result payload sent to GUVI callback endpoint"""
     sessionId: str
     scamDetected: bool
-    scamType: str
-    confidence: float
     totalMessagesExchanged: int
     extractedIntelligence: ExtractedIntelligence
-    conversationSummary: str
-    agentNotes: Optional[str] = Field(default="")
+    agentNotes: str
 
 
 class ScamDetectionResult(BaseModel):

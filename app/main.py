@@ -387,33 +387,44 @@ async def process_message_background(
                 
                 callback_sent_sessions.add(session_id)
                 
-                # Generate agent notes summarizing the conversation
-                agent_notes_parts = [
-                    f"Scam type: {detection_result.scam_type}",
-                    f"Confidence: {detection_result.confidence:.2f}",
-                    f"Messages exchanged: {message_counts.get(session_id, 1)}",
-                ]
+                # Generate agent notes describing scammer behavior and tactics
+                scam_tactics = []
                 
-                if intelligence.bankAccounts:
-                    agent_notes_parts.append(f"Extracted {len(intelligence.bankAccounts)} bank account(s)")
-                if intelligence.upiIds:
-                    agent_notes_parts.append(f"Extracted {len(intelligence.upiIds)} UPI ID(s)")
-                if intelligence.phoneNumbers:
-                    agent_notes_parts.append(f"Extracted {len(intelligence.phoneNumbers)} phone number(s)")
+                # Analyze scammer behavior from conversation
+                if detection_result.scam_type == "credential_phishing":
+                    scam_tactics.append("requesting sensitive credentials (OTP/PIN/password)")
+                elif detection_result.scam_type == "financial_threat":
+                    scam_tactics.append("using urgency and account blocking threats")
+                elif detection_result.scam_type == "reward_scam":
+                    scam_tactics.append("false prize/lottery claims")
+                elif detection_result.scam_type == "impersonation":
+                    scam_tactics.append("impersonating authority figures")
+                
+                if any(kw in intelligence.suspiciousKeywords for kw in ["urgent", "immediately", "now"]):
+                    scam_tactics.append("urgency tactics")
+                
                 if intelligence.phishingLinks:
-                    agent_notes_parts.append(f"Detected {len(intelligence.phishingLinks)} phishing link(s)")
+                    scam_tactics.append("sharing malicious links")
                 
-                agent_notes = ". ".join(agent_notes_parts) + "."
+                if intelligence.bankAccounts or intelligence.upiIds:
+                    scam_tactics.append("attempting payment redirection")
+                
+                # Build agent notes
+                if scam_tactics:
+                    agent_notes = f"Scammer used {', '.join(scam_tactics)}"
+                else:
+                    agent_notes = f"Scammer employed {detection_result.scam_type} tactics"
+                
+                # Calculate total messages: scammer + honeypot (both sides)
+                scammer_msg_count = message_counts.get(session_id, 1)
+                total_msgs = scammer_msg_count * 2  # Each scammer message gets 1 honeypot response
                 
                 from app.models import CallbackPayload
                 payload = CallbackPayload(
                     sessionId=session_id,
                     scamDetected=detection_result.is_scam,
-                    scamType=detection_result.scam_type or "unknown",
-                    confidence=detection_result.confidence,
+                    totalMessagesExchanged=total_msgs,
                     extractedIntelligence=intelligence,
-                    totalMessagesExchanged=message_counts.get(session_id, 1),
-                    conversationSummary=f"Scam detected: {detection_result.scam_type}",
                     agentNotes=agent_notes
                 )
                 
@@ -531,10 +542,13 @@ async def honeypot_endpoint(
         conversation_history=conversation_history
     )
     
-    # Track message count
+    # Track message count (scammer messages only, honeypot responses added later)
     if session_id not in message_counts:
         message_counts[session_id] = 0
-    message_counts[session_id] += 1
+    message_counts[session_id] += 1  # Count scammer message
+    
+    # Total messages = scammer messages + honeypot responses (1:1 ratio)
+    total_messages_exchanged = message_counts[session_id] * 2
     
     # Generate immediate response using LLM conversation agent
     try:

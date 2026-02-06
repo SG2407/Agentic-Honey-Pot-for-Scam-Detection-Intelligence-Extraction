@@ -3,6 +3,7 @@ uvicorn==0.24.0
 pydantic>=2.5.0
 requests==2.31.0
 python-dotenv==1.0.0
+openai>=1.0.0
 groq>=0.4.1
 python-json-logger==2.0.7
 aiofiles==23.2.1
