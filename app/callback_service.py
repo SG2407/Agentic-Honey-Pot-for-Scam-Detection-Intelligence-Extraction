@@ -25,7 +25,9 @@ class CallbackService:
             # Use model_dump to get dict - KEEP ALL FIELDS (including empty arrays)
             payload_dict = payload.model_dump()
             
+            # Log the complete payload being sent
             logger.info(f"📤 Sending callback for session: {payload.sessionId}")
+            logger.info(f"   Complete payload: {payload_dict}")
             logger.info(f"   Scam detected: {payload.scamDetected}")
             logger.info(f"   Messages exchanged: {payload.totalMessagesExchanged}")
             logger.info(f"   Intelligence: {payload_dict['extractedIntelligence']}")

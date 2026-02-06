@@ -162,11 +162,13 @@ class ExtractedIntelligence(BaseModel):
 
 class CallbackPayload(BaseModel):
     """Final result payload sent to GUVI callback endpoint"""
-    sessionId: str
-    scamDetected: bool
-    totalMessagesExchanged: int
-    extractedIntelligence: ExtractedIntelligence
-    agentNotes: str
+    model_config = ConfigDict(extra='forbid')  # Strict: only defined fields
+    
+    sessionId: str = Field(..., description="Session ID from GUVI platform")
+    scamDetected: bool = Field(..., description="Whether scam was detected")
+    totalMessagesExchanged: int = Field(..., description="Total messages: scammer + honeypot")
+    extractedIntelligence: ExtractedIntelligence = Field(..., description="Extracted intelligence")
+    agentNotes: str = Field(..., description="Description of scammer behavior and tactics")
 
 
 class ScamDetectionResult(BaseModel):
