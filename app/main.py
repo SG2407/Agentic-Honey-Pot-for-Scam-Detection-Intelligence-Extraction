@@ -86,6 +86,11 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown"""
     logger.info("🚀 Agentic Honey-Pot starting...")
     logger.info(f"⏱  Timeout configured: {MESSAGE_TIMEOUT_SECONDS} seconds")
+    
+    # CRITICAL DEBUG: Log model fields at startup
+    logger.info(f"🔍 CallbackPayload model fields: {list(CallbackPayload.model_fields.keys())}")
+    logger.info(f"✅ sessionId in model: {'sessionId' in CallbackPayload.model_fields}")
+    
     yield
     logger.info("🛑 Agentic Honey-Pot shutting down...")
 

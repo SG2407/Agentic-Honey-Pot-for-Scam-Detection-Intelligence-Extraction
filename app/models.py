@@ -162,7 +162,8 @@ class ExtractedIntelligence(BaseModel):
 
 class CallbackPayload(BaseModel):
     """Final result payload sent to GUVI callback endpoint"""
-    model_config = ConfigDict(extra='forbid')  # Strict: only defined fields
+    # VERSION CHECK: This model was updated at 2026-02-06 with sessionId field
+    model_config = ConfigDict(extra='forbid', populate_by_name=True)  # Strict: only defined fields
     
     sessionId: str = Field(..., description="Session ID from GUVI platform")
     scamDetected: bool = Field(..., description="Whether scam was detected")

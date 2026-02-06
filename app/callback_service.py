@@ -23,11 +23,19 @@ class CallbackService:
         """
         try:
             # Use model_dump to get dict - EXPLICITLY include ALL fields
+            # Use by_alias=False since our model has NO aliases defined
             payload_dict = payload.model_dump(
                 mode='json',
                 exclude_none=False,
-                by_alias=True
+                by_alias=False
             )
+            
+            # CRITICAL DEBUG: Log the EXACT payload object before serialization
+            logger.info(f"🔍 DEBUG: payload object attributes:")
+            logger.info(f"   - hasattr sessionId: {hasattr(payload, 'sessionId')}")
+            logger.info(f"   - payload.sessionId value: {getattr(payload, 'sessionId', 'NOT FOUND')}")
+            logger.info(f"   - payload.model_dump() keys: {list(payload_dict.keys())}")
+            logger.info(f"   - 'sessionId' in dict: {'sessionId' in payload_dict}")
             
             # Log the complete payload being sent
             logger.info(f"📤 Sending callback for session: {payload.sessionId}")
