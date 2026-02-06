@@ -53,6 +53,13 @@ class CallbackService:
                 pool=5.0      # 5 seconds to get connection from pool
             )
             
+            # CRITICAL DEBUG: Log the exact JSON string that will be sent
+            import json as json_lib
+            json_string = json_lib.dumps(payload_dict)
+            logger.info(f"🔍 EXACT JSON being sent to GUVI:")
+            logger.info(f"{json_string}")
+            logger.info(f"🔍 JSON length: {len(json_string)} bytes")
+            
             # Send POST request to GUVI
             async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.post(

@@ -571,6 +571,7 @@ async def honeypot_endpoint(
         scam_type = detection_result.scam_type if detection_result.is_scam else "unknown"
         
         # Generate reply using conversation agent (LLM-based)
+        # Increased timeout to 4.5s to allow LLM completion (was 2.5s)
         reply = await asyncio.wait_for(
             asyncio.to_thread(
                 conversation_agent.generate_reply,
@@ -579,7 +580,7 @@ async def honeypot_endpoint(
                 conversation_history,
                 request.metadata
             ),
-            timeout=2.5
+            timeout=4.5
         )
         
     except asyncio.TimeoutError:
