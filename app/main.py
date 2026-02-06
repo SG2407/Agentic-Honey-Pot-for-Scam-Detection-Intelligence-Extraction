@@ -387,6 +387,24 @@ async def process_message_background(
                 
                 callback_sent_sessions.add(session_id)
                 
+                # Generate agent notes summarizing the conversation
+                agent_notes_parts = [
+                    f"Scam type: {detection_result.scam_type}",
+                    f"Confidence: {detection_result.confidence:.2f}",
+                    f"Messages exchanged: {message_counts.get(session_id, 1)}",
+                ]
+                
+                if intelligence.bankAccounts:
+                    agent_notes_parts.append(f"Extracted {len(intelligence.bankAccounts)} bank account(s)")
+                if intelligence.upiIds:
+                    agent_notes_parts.append(f"Extracted {len(intelligence.upiIds)} UPI ID(s)")
+                if intelligence.phoneNumbers:
+                    agent_notes_parts.append(f"Extracted {len(intelligence.phoneNumbers)} phone number(s)")
+                if intelligence.phishingLinks:
+                    agent_notes_parts.append(f"Detected {len(intelligence.phishingLinks)} phishing link(s)")
+                
+                agent_notes = ". ".join(agent_notes_parts) + "."
+                
                 from app.models import CallbackPayload
                 payload = CallbackPayload(
                     sessionId=session_id,
@@ -395,7 +413,8 @@ async def process_message_background(
                     confidence=detection_result.confidence,
                     extractedIntelligence=intelligence,
                     totalMessagesExchanged=message_counts.get(session_id, 1),
-                    conversationSummary=f"Scam detected: {detection_result.scam_type}"
+                    conversationSummary=f"Scam detected: {detection_result.scam_type}",
+                    agentNotes=agent_notes
                 )
                 
                 try:

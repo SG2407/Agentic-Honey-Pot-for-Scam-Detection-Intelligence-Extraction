@@ -83,8 +83,19 @@ class ConversationAgent:
         engagement_level = "early" if turn_count <= 3 else "mid" if turn_count <= 6 else "deep"
         
         # PRIORITY 4: Extract metadata for context
-        channel = metadata.get('channel') if metadata else None
-        locale = metadata.get('locale') if metadata else None
+        # Handle both dict and Pydantic Metadata objects
+        if metadata:
+            if hasattr(metadata, 'channel'):
+                # Pydantic Metadata object
+                channel = metadata.channel
+                locale = metadata.locale
+            else:
+                # Dict
+                channel = metadata.get('channel') if isinstance(metadata, dict) else None
+                locale = metadata.get('locale') if isinstance(metadata, dict) else None
+        else:
+            channel = None
+            locale = None
         
         # PRIORITY 4: Adjust reply style based on channel
         style_hints = ""
