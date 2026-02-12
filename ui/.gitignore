@@ -1,0 +1,17 @@
+# UI-specific ignores
+sessions.db
+*.db
+*.db-journal
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+venv/
+venv_ui/
+ENV/
+env/
+.DS_Store
+*.log
+data/
+.streamlit/

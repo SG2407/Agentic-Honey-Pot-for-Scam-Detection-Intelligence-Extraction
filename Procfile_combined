@@ -1,0 +1,4 @@
+# Procfile for Render - runs both services
+# Main honeypot on $PORT, UI backend on fixed port
+
+web: uvicorn app.main:app --host 0.0.0.0 --port $PORT & uvicorn ui.ui_backend:app --host 0.0.0.0 --port 8001

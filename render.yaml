@@ -5,8 +5,12 @@ services:
     region: singapore
     plan: free
     branch: main
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # Install dependencies for BOTH main app and UI
+    buildCommand: pip install -r requirements.txt && pip install -r ui/requirements_ui.txt
+    # Run both services: UI on port 8001 (background), Main on $PORT
+    startCommand: |
+      uvicorn ui.ui_backend:app --host 0.0.0.0 --port 8001 &
+      uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: GROQ_API_KEY
         sync: false
@@ -18,4 +22,7 @@ services:
         value: 10
       - key: ENVIRONMENT
         value: production
+      # New: UI Backend will use localhost since same service
+      - key: HONEYPOT_API_URL
+        value: http://localhost:10000
     healthCheckPath: /health

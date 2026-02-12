@@ -1,0 +1,23 @@
+# UI-specific dependencies
+# Install with: pip install -r ui/requirements_ui.txt
+
+# Web frameworks
+streamlit==1.31.0
+fastapi==0.104.1
+uvicorn==0.24.0
+
+# HTTP client
+httpx==0.25.2
+requests==2.31.0
+
+# Data models
+pydantic>=2.5.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Logging
+python-json-logger==2.0.7
+
+# Optional: For production deployment
+gunicorn==21.2.0

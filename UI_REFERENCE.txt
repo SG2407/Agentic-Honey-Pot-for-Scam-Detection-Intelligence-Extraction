@@ -1,0 +1,168 @@
+╔═══════════════════════════════════════════════════════════════════╗
+║                    🕷️  UI QUICK REFERENCE CARD                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🚀 START THE UI                                                  ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  macOS/Linux:        cd ui && ./start_ui.sh                       ║
+║  Windows:            cd ui && start_ui.bat                        ║
+║  Docker:             docker-compose up                            ║
+║                                                                    ║
+║  Then open: http://localhost:8501                                 ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🔑 AUTHENTICATION                                                ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  API Key: team_recursives                                         ║
+║                                                                    ║
+║  Enter in sidebar → Click "Connect" → Start chatting              ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  💡 EXAMPLE MESSAGES TO TRY                                       ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  1. "Your account is blocked! Click http://fake-bank.com"         ║
+║                                                                    ║
+║  2. "You won ₹50,000! Send bank account: 1234567890"             ║
+║                                                                    ║
+║  3. "Send OTP to verify your card. Urgent!"                       ║
+║                                                                    ║
+║  4. "Call +91-9876543210 for KYC or account closes"              ║
+║                                                                    ║
+║  5. "Pay via scammer@paytm to claim your prize"                   ║
+║                                                                    ║
+║  Or click "Try Example" button in the UI                          ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  📊 WHAT YOU'LL SEE                                               ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  Left Panel:         Chat conversation                            ║
+║  Right Panel:        Intelligence extraction                      ║
+║                      • Bank accounts                              ║
+║                      • UPI IDs                                    ║
+║                      • Phone numbers                              ║
+║                      • Phishing links                             ║
+║                      • Suspicious keywords                        ║
+║  Top Right:          Scam detection alerts                        ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🏗️  ARCHITECTURE                                                 ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  Browser (8501) → UI Backend (8001) → Honeypot (render.com)      ║
+║                                                                    ║
+║  Your existing code: UNCHANGED ✅                                 ║
+║  GUVI callback:      Still works ✅                               ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  📁 NEW FILES (All in ui/ folder)                                 ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  streamlit_app.py           Chat interface                        ║
+║  ui_backend.py              FastAPI backend                       ║
+║  session_store.py           SQLite database                       ║
+║  intelligence_monitor.py    Intelligence extraction               ║
+║  requirements_ui.txt        Dependencies                          ║
+║  .env.ui                    Configuration                         ║
+║  Dockerfile                 Container image                       ║
+║  start_ui.sh / .bat         Startup scripts                       ║
+║  README_UI.md               Full documentation                    ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🔧 TROUBLESHOOTING                                               ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  Dependencies missing:                                            ║
+║  → pip install -r ui/requirements_ui.txt                          ║
+║                                                                    ║
+║  Port in use:                                                     ║
+║  → lsof -i :8001 | awk 'NR>1 {print $2}' | xargs kill -9         ║
+║  → lsof -i :8501 | awk 'NR>1 {print $2}' | xargs kill -9         ║
+║                                                                    ║
+║  Backend not connecting:                                          ║
+║  → curl https://...onrender.com/health                            ║
+║                                                                    ║
+║  Invalid API key:                                                 ║
+║  → Check .env and ui/.env.ui match                                ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🌐 DEPLOYMENT                                                    ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  Streamlit Cloud (Free):                                          ║
+║  1. Push to GitHub                                                ║
+║  2. Go to share.streamlit.io                                      ║
+║  3. Connect → ui/streamlit_app.py                                 ║
+║                                                                    ║
+║  Render/Railway (Backend):                                        ║
+║  1. Create web service                                            ║
+║  2. Build: pip install -r ui/requirements_ui.txt                  ║
+║  3. Start: uvicorn ui.ui_backend:app --host 0.0.0.0 --port $PORT ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  📚 DOCUMENTATION                                                 ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  Quick Start:       UI_QUICKSTART.md                              ║
+║  Full UI Docs:      ui/README_UI.md                               ║
+║  Implementation:    UI_IMPLEMENTATION_SUMMARY.md                  ║
+║  Architecture:      ARCHITECTURE.md                               ║
+║  Main App:          README.md                                     ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  ✅ VERIFICATION                                                  ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  Check no code changed:  ./verify_no_changes.sh                   ║
+║  Test components:        python ui/test_ui_components.py          ║
+║  Test backend:           curl http://localhost:8001/health        ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🎯 KEY FEATURES                                                  ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  ✓ Real-time chat interface                                       ║
+║  ✓ Live intelligence extraction                                   ║
+║  ✓ Scam detection with confidence scores                          ║
+║  ✓ Session management                                             ║
+║  ✓ Data export (JSON)                                             ║
+║  ✓ API key authentication                                         ║
+║  ✓ Zero code changes to existing app                              ║
+║  ✓ Independent deployment                                         ║
+║  ✓ Production-ready                                               ║
+║                                                                    ║
+╠═══════════════════════════════════════════════════════════════════╣
+║                                                                    ║
+║  🎉 READY TO GO!                                                  ║
+║  ─────────────────────────────────────────────────────────────   ║
+║                                                                    ║
+║  1. Install dependencies:                                         ║
+║     pip install -r ui/requirements_ui.txt                         ║
+║                                                                    ║
+║  2. Start UI:                                                     ║
+║     cd ui && ./start_ui.sh                                        ║
+║                                                                    ║
+║  3. Open browser:                                                 ║
+║     http://localhost:8501                                         ║
+║                                                                    ║
+║  4. Enter API key:                                                ║
+║     team_recursives                                               ║
+║                                                                    ║
+║  5. Start chatting! 🕷️                                            ║
+║                                                                    ║
+╚═══════════════════════════════════════════════════════════════════╝
+
+Need help? Check UI_QUICKSTART.md or ui/README_UI.md

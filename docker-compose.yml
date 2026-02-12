@@ -1,0 +1,58 @@
+# Docker Compose for complete system
+# Run with: docker-compose up
+
+version: '3.8'
+
+services:
+  # UI Backend (FastAPI)
+  ui-backend:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: honeypot-ui-backend
+    ports:
+      - "8001:8001"
+    environment:
+      - HONEYPOT_API_URL=https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com
+      - API_KEY=team_recursives
+      - UI_BACKEND_PORT=8001
+    volumes:
+      - ./ui/sessions.db:/app/ui/sessions.db
+    restart: unless-stopped
+    command: uvicorn ui.ui_backend:app --host 0.0.0.0 --port 8001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Streamlit UI
+  streamlit-ui:
+    build:
+      context: .
+      dockerfile: ui/Dockerfile
+    container_name: honeypot-streamlit
+    ports:
+      - "8501:8501"
+    environment:
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+    depends_on:
+      - ui-backend
+    restart: unless-stopped
+    command: streamlit run ui/streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  sessions_data:
+    driver: local
+
+networks:
+  default:
+    name: honeypot-network

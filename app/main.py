@@ -617,9 +617,138 @@ async def root():
         "version": "2.0.0",
         "endpoints": {
             "honeypot": "POST /honeypot",
-            "health": "GET /health"
+            "health": "GET /health",
+            "ui_chat": "POST /ui-api/chat (UI Backend Proxy)",
+            "ui_health": "GET /ui-api/health (UI Backend Proxy)"
         }
     }
+
+
+# ============================================================================
+# UI BACKEND PROXY - Forward requests to internal UI backend on port 8001
+# ============================================================================
+
+@app.post("/ui-api/chat")
+async def ui_chat_proxy(request: Request):
+    """Proxy chat requests to UI backend (port 8001)"""
+    try:
+        body = await request.body()
+        async with http_client.post(
+            "http://localhost:8001/chat",
+            content=body,
+            headers={"Content-Type": "application/json"}
+        ) as response:
+            return JSONResponse(
+                status_code=response.status_code,
+                content=await response.json()
+            )
+    except Exception as e:
+        logger.error(f"UI proxy error: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "UI backend unavailable"}
+        )
+
+
+@app.post("/ui-api/session/new")
+async def ui_session_new_proxy(request: Request):
+    """Proxy session creation to UI backend"""
+    try:
+        api_key = request.headers.get("x-api-key")
+        async with http_client.post(
+            "http://localhost:8001/session/new",
+            headers={"x-api-key": api_key}
+        ) as response:
+            return JSONResponse(
+                status_code=response.status_code,
+                content=await response.json()
+            )
+    except Exception as e:
+        logger.error(f"UI proxy error: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "UI backend unavailable"}
+        )
+
+
+@app.get("/ui-api/session/{session_id}")
+async def ui_session_get_proxy(session_id: str, request: Request):
+    """Proxy session retrieval to UI backend"""
+    try:
+        api_key = request.headers.get("x-api-key")
+        async with http_client.get(
+            f"http://localhost:8001/session/{session_id}",
+            headers={"x-api-key": api_key}
+        ) as response:
+            return JSONResponse(
+                status_code=response.status_code,
+                content=await response.json()
+            )
+    except Exception as e:
+        logger.error(f"UI proxy error: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "UI backend unavailable"}
+        )
+
+
+@app.get("/ui-api/session/{session_id}/messages")
+async def ui_session_messages_proxy(session_id: str, request: Request):
+    """Proxy message history to UI backend"""
+    try:
+        api_key = request.headers.get("x-api-key")
+        async with http_client.get(
+            f"http://localhost:8001/session/{session_id}/messages",
+            headers={"x-api-key": api_key}
+        ) as response:
+            return JSONResponse(
+                status_code=response.status_code,
+                content=await response.json()
+            )
+    except Exception as e:
+        logger.error(f"UI proxy error: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "UI backend unavailable"}
+        )
+
+
+@app.delete("/ui-api/session/{session_id}")
+async def ui_session_delete_proxy(session_id: str, request: Request):
+    """Proxy session deletion to UI backend"""
+    try:
+        api_key = request.headers.get("x-api-key")
+        async with http_client.delete(
+            f"http://localhost:8001/session/{session_id}",
+            headers={"x-api-key": api_key}
+        ) as response:
+            return JSONResponse(
+                status_code=response.status_code,
+                content=await response.json()
+            )
+    except Exception as e:
+        logger.error(f"UI proxy error: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={"error": "UI backend unavailable"}
+        )
+
+
+@app.get("/ui-api/health")
+async def ui_health_proxy():
+    """Proxy health check to UI backend"""
+    try:
+        async with http_client.get("http://localhost:8001/health") as response:
+            return JSONResponse(
+                status_code=response.status_code,
+                content=await response.json()
+            )
+    except Exception as e:
+        logger.error(f"UI backend health check failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={"status": "unhealthy", "error": "UI backend unavailable"}
+        )
 
 
 # ============================================================================
