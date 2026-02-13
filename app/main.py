@@ -372,6 +372,7 @@ async def process_message_background(
                 timeout=3.0
             )
             has_intel = intelligence_extractor.has_real_intelligence(intelligence)
+            intel_quality = intelligence_extractor.calculate_intelligence_quality(intelligence)
         except asyncio.TimeoutError:
             logger.error(f"Extraction timeout: {session_id}")
             return
@@ -379,12 +380,29 @@ async def process_message_background(
             logger.error(f"Extraction failed: {session_id}")
             return
         
+        # Calculate total messages: scammer + honeypot (both sides)
+        scammer_msg_count = message_counts.get(session_id, 1)
+        total_msgs = scammer_msg_count * 2  # Each scammer message gets 1 honeypot response
+        
+        # Enhanced callback conditions for proper engagement:
+        # 1. Scam must be detected
+        # 2. EITHER intelligence quality > 50% OR message limit (15) reached
+        intel_threshold_met = intel_quality >= 0.5  # At least 50% of critical fields populated
+        message_limit_reached = total_msgs >= 15  # Engagement limit reached
+        
+        should_send_callback = (
+            detection_result.is_scam and 
+            (intel_threshold_met or message_limit_reached)
+        )
+        
         # Send callback if conditions met
-        if detection_result.is_scam and has_intel:
+        if should_send_callback:
             if session_id not in callback_sent_sessions:
                 logger.info(f"🎯 Callback conditions met for session {session_id}:")
                 logger.info(f"   ✓ Scam detected: {detection_result.scam_type} (confidence: {detection_result.confidence})")
-                logger.info(f"   ✓ Intelligence extracted: {has_intel}")
+                logger.info(f"   ✓ Intelligence quality: {intel_quality*100:.1f}% (threshold: 50%)")
+                logger.info(f"   ✓ Total messages: {total_msgs} (limit: 15)")
+                logger.info(f"   ✓ Callback trigger: {'Intelligence threshold met' if intel_threshold_met else 'Message limit reached'}")
                 logger.info(f"   ✓ Bank accounts: {len(intelligence.bankAccounts)}")
                 logger.info(f"   ✓ UPI IDs: {len(intelligence.upiIds)}")
                 logger.info(f"   ✓ Phone numbers: {len(intelligence.phoneNumbers)}")
@@ -420,10 +438,6 @@ async def process_message_background(
                 else:
                     agent_notes = f"Scammer employed {detection_result.scam_type} tactics"
                 
-                # Calculate total messages: scammer + honeypot (both sides)
-                scammer_msg_count = message_counts.get(session_id, 1)
-                total_msgs = scammer_msg_count * 2  # Each scammer message gets 1 honeypot response
-                
                 from app.models import CallbackPayload
                 payload = CallbackPayload(
                     sessionId=session_id,
@@ -448,7 +462,12 @@ async def process_message_background(
         else:
             logger.info(f"⏸️  Callback NOT sent for session {session_id}:")
             logger.info(f"   - Scam detected: {detection_result.is_scam}")
-            logger.info(f"   - Has intelligence: {has_intel}")
+            logger.info(f"   - Intelligence quality: {intel_quality*100:.1f}% (threshold: 50%)")
+            logger.info(f"   - Total messages: {total_msgs} (limit: 15)")
+            logger.info(f"   - Intelligence threshold met: {intel_threshold_met}")
+            logger.info(f"   - Message limit reached: {message_limit_reached}")
+            if detection_result.is_scam:
+                logger.info(f"   ℹ️  Continuing engagement to gather more intelligence...")
         
     except Exception as e:
         logger.error(f"Background error: {session_id}")

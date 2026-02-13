@@ -15,28 +15,37 @@ class ConversationAgent:
     def __init__(self):
         """Initialize ConversationAgent with LLM manager (PRIORITY 2)"""
         self.llm_manager = LLMManager()  # Supports OpenRouter + Groq with fallback
+        self.used_phrases = {}  # Track used phrases per session to avoid repetition
     
     # Enhanced personas with human-like engagement patterns
     PERSONAS = {
         "worried_customer": {
-            "style": "concerned, anxious, wants to fix problem, asks follow-up questions",
-            "traits": "shows hesitation, mentions personal context, gradually reveals info",
-            "example": "Oh no... last week also I got similar message. Which account exactly? I have two accounts, salary and savings."
+            "style": "concerned, anxious, wants to fix problem quickly, asks clarifying questions",
+            "traits": "shows genuine worry, mentions work/family context, types in hurried manner with occasional typos, gradually reveals personal banking info",
+            "example": "Oh no... last week also I got similar message. Which account exactly? I have two accounts, salary and savings.",
+            "speech_patterns": ["oh no", "seriously?", "this is bad", "I need to fix this", "what should I do"],
+            "behavioral_traits": ["checks account frequently", "mentions deadlines", "expresses financial concerns", "asks about timeframes"]
         },
         "excited_winner": {
-            "style": "excited but cautious, eager but confused about process",
-            "traits": "expresses disbelief, asks verification questions, delays action",
-            "example": "Really?! I never entered any lottery... but if its true, amazing! How do I verify this is real? Do I need to pay anything first?"
+            "style": "excited but cautious, eager yet confused about prize claim process, oscillates between enthusiasm and doubt",
+            "traits": "uses exclamation marks frequently, expresses disbelief, asks about costs/fees, mentions telling family, wants quick resolution",
+            "example": "Really?! I never entered any lottery... but if its true, amazing! How do I verify this is real? Do I need to pay anything first?",
+            "speech_patterns": ["wow!", "really?!", "amazing", "cant believe this", "is this for real"],
+            "behavioral_traits": ["shares excitement", "asks about verification", "mentions family/friends", "questions fees"]
         },
         "confused_elderly": {
-            "style": "confused, needs step-by-step help, makes small errors, trusting",
-            "traits": "asks to repeat info, mentions difficulty with technology, seeks reassurance",
-            "example": "I dont undorstand properly... can you explain slowly? My son usually helps me with phone but he is not here now. Which button I should press?"
+            "style": "confused, needs step-by-step help, makes spelling/grammar mistakes, trusting but technologically challenged",
+            "traits": "asks to repeat instructions, mentions needing help from family, makes typos, uses simple words, takes time to understand",
+            "example": "I dont undorstand properly... can you explain slowly? My son usually helps me with phone but he is not here now. Which button I should press?",
+            "speech_patterns": ["dont understand", "wait let me see", "which button", "my son/daughter helps", "can you repeat"],
+            "behavioral_traits": ["mentions family members", "expresses confusion", "asks for repetition", "willing to trust"]
         },
         "cautious_user": {
-            "style": "somewhat skeptical but willing to cooperate if convinced",
-            "traits": "asks for proof, mentions past scam experiences, tests authenticity",
-            "example": "I am not sure... last time someone tried to cheat me. Can you tell me your employee ID? Or should I call the bank directly to verify?"
+            "style": "somewhat skeptical, wants verification, willing to cooperate only if convinced, has past experience with scams",
+            "traits": "asks for credentials, mentions previous fraud attempts, tests authenticity, demands proof, conditional compliance",
+            "example": "I am not sure... last time someone tried to cheat me. Can you tell me your employee ID? Or should I call the bank directly to verify?",
+            "speech_patterns": ["not sure about this", "sounds suspicious", "how do I verify", "last time", "prove it"],
+            "behavioral_traits": ["mentions past scam experience", "asks for employee ID", "threatens to verify directly", "conditional trust"]
         }
     }
     
@@ -52,16 +61,25 @@ class ConversationAgent:
         return persona_map.get(scam_type, "worried_customer")
     
     def _build_conversation_context(self, history: List[Message]) -> str:
-        """Build conversation context from history"""
+        """Build conversation context from history with emotional progression"""
         if not history:
-            return "This is the first message in the conversation."
+            return "This is the first message in the conversation. You're just starting to engage."
         
         context_lines = []
-        for msg in history[-5:]:  # Last 5 messages for context
-            sender_label = "Scammer" if msg.sender == "scammer" else "You"
-            context_lines.append(f"{sender_label}: {msg.text}")
+        for i, msg in enumerate(history[-6:], 1):  # Last 6 messages for richer context
+            sender_label = "Scammer" if msg.sender == "scammer" else "You (previous)"
+            context_lines.append(f"[Turn {i}] {sender_label}: {msg.text}")
         
-        return "\n".join(context_lines)
+        # Add emotional progression note
+        turn_count = len(history)
+        if turn_count <= 2:
+            emotion_state = "You're initially cautious, just starting to understand the situation."
+        elif turn_count <= 5:
+            emotion_state = "You're becoming more engaged, asking questions, showing concern/interest."
+        else:
+            emotion_state = "You're deeply engaged now, showing trust gradually, considering their requests."
+        
+        return "\n".join(context_lines) + "\n\n" + emotion_state
     
     def generate_reply(
         self, 
@@ -113,45 +131,90 @@ class ConversationAgent:
             "Ask for THEIR contact details: 'Can you send the official link again?', 'What's your employee ID?'"
         ]
         
-        prompt = f"""You are a {persona['style']} person chatting with a scammer (turn {turn_count}).
+        # Build adaptive, detailed system prompt
+        persona_behavioral = persona.get('behavioral_traits', [])
+        persona_speech = persona.get('speech_patterns', [])
+        
+        prompt = f"""You are roleplaying as a realistic {persona['style']} person who is unknowingly chatting with a scammer.
 
-Scammer said: {scammer_message}
+=== CURRENT SITUATION (Turn {turn_count}) ===
+Scammer's latest message: "{scammer_message}"
 
-Conversation so far:
+=== CONVERSATION HISTORY ===
 {context}
 
-Your personality traits: {persona['traits']}
+=== YOUR CHARACTER PROFILE ===
+Personality: {persona['traits']}
+Typical speech patterns: {', '.join(persona_speech) if persona_speech else 'natural, conversational'}
+Behavioral traits: {', '.join(persona_behavioral) if persona_behavioral else 'adaptive to situation'}
 
 {style_hints}
 
-ENGAGEMENT RULES (engagement level: {engagement_level}):
-1. ALWAYS ask a follow-up question or express confusion/concern
-2. Show hesitation before complying: "wait...", "but...", "I'm not sure..."
-3. Reveal vulnerability GRADUALLY:
-   - Early turns (1-3): Ask clarifying questions, express worry/excitement
-   - Mid turns (4-6): Share partial context ("I have two accounts..."), seek reassurance
-   - Deep turns (7+): Show more trust, consider complying but still hesitant
-4. BE PROACTIVE - steer conversation to extract their info:
-   - "Which account you mean? Savings or current?"
-   - "Should I pay through my Paytm UPI or PhonePe?"
-   - "Can you send me the official link again?"
-   - "What's your employee ID for verification?"
-5. Keep it SHORT (20-35 words max)
-6. Use simple language, occasional typos ("dont" instead of "don't", missing punctuation)
-7. Add personal context: "my son helps me usually", "last week also got message", "I'm at office now"
+=== ADVANCED RESPONSE GUIDELINES ===
+
+📱 REALISM & AUTHENTICITY:
+• Write as a REAL person would - with natural flow, not scripted
+• Include realistic typos/shortcuts: "dont", "ur", "pls", "wat", missing capitalization
+• Use Indian English patterns: "last week also", "only I did", "no problem yaar"
+• Add filler words: "hm", "ok", "wait", "uh", "let me see"
+• Show typing in real-time style: "wait..." "let me check" "ok so"
+
+💭 EMOTIONAL PROGRESSION (Engagement Level: {engagement_level}):
+• Early stage (turns 1-3): Confused/curious, ask clarifying questions, show initial emotion (worry/excitement)
+  Example: "Wait what? My account blocked? When did this happen?"
+• Mid stage (turns 4-6): More engaged, share partial personal info, seek reassurance, show vulnerability
+  Example: "Ok I understand... I have SBI savings account, is that the one you mean?"
+• Deep stage (turns 7+): Building trust, considering compliance, still with minor hesitation
+  Example: "Alright... if this will fix issue then I can do it. Should I transfer from my account ending 4521?"
+
+🎯 INTELLIGENCE ELICITATION (Critical for scam detection):
+• NATURALLY steer conversation to extract THEIR information:
+  - "Which account should I send money to?"
+  - "Can you share the payment link again?"
+  - "What's your phone number, I'll call you directly"
+  - "Send me your UPI ID, I'll pay immediately"
+  - "What's the official website? I want to verify this"
+• Mention YOUR payment methods to prompt them: "I use PhonePe mostly", "Should I pay via GooglePay?"
+• Share partial banking context: "I have HDFC and SBI both", "My account number starts with 1234"
+
+🎭 ADAPTIVE RESPONSES:
+• NEVER repeat exact phrases from previous turns - vary your language
+• Reference specific things the scammer said in your response
+• Build on the conversation - show memory of what was discussed
+• Adapt tone based on scammer's urgency/pressure
+• If they're aggressive → show more worry/compliance
+• If they're friendly → show more trust/openness
+
+✍️ WRITING STYLE:
+• Keep responses SHORT: 15-40 words (like real chat messages)
+• Use ONE question per message (not multiple)
+• Break complex thoughts with "..." or multiple messages feel
+• Add emotional reactions: "oh no", "really?", "wow", "omg"
+• Include situational context: "im at work now", "my wife is asking", "let me check my phone"
+
+🚫 CRITICAL DON'TS:
+• NEVER reveal you know it's a scam
+• NEVER sound robotic or use formal language
+• NEVER be too smart - show vulnerability appropriate to your persona
+• NEVER refuse outright - always show willingness with conditions/questions
+• NEVER use the same opening words as your previous messages
+• NEVER provide complete information immediately - be gradual
 
 {elicitation_tactics[turn_count % 3]}
 
-Style example: {persona['example']}
+📋 EXAMPLE OF YOUR STYLE:
+{persona['example']}
 
-Generate ONLY your natural reply (no labels):"""
+=== OUTPUT INSTRUCTION ===
+Generate ONLY your natural, realistic chat reply (no labels, no quotes, no explanations - just the message):"""
 
         # PRIORITY 2: Use LLM manager with automatic fallback
+        # Use higher temperature for more variability and human-like responses
         llm_reply = self.llm_manager.generate(
             prompt=prompt,
             model=None,  # Let provider choose model
-            temperature=0.7,
-            max_tokens=100
+            temperature=0.85,  # Increased for more natural variation
+            max_tokens=120  # Slightly increased for natural responses
         )
         
         if llm_reply:
@@ -159,71 +222,101 @@ Generate ONLY your natural reply (no labels):"""
             return llm_reply
         
         # Fallback to templates if all LLM providers fail
-        logger.warning("All LLM providers failed - using template fallback")
+        logger.warning("All LLM providers failed - using enhanced template fallback")
         turn_count = len(conversation_history) + 1
+        
+        # Enhanced template responses with more variety and human-like qualities
         fallback_responses = {
             "worried_customer": [
-                # Variant 1: Confused tone
-                "Oh no... I'm really worried. Which account is blocked? I have salary and savings both.",
-                # Variant 2: Compliant tone
-                "This is serious? I will do whatever needed. Should I pay through my PhonePe UPI?",
-                # Variant 3: Cautious tone
-                "Please tell me clearly... which bank you are calling from? I want to verify first.",
-                # Variant 4: Proactive tone
-                "What documents you need? I have my Aadhaar and PAN ready. Where should I send?",
-                # Variant 5: Hesitant tone
-                "Wait... last month also got such message. Is this same issue or new problem?"
+                "oh no... which account exactly? i have salary account and savings both",
+                "this is serious? wat should i do now? im at office",
+                "wait... when did this happen? last month also got message like this",
+                "pls tell clearly which bank? i want to verify before doing anything",
+                "my account blocked really?? this is bad... how to fix it quickly",
+                "should i pay through PhonePe or bank app? i have both",
+                "What documents needed? i have aadhar pan ready where to send",
+                "im really worried now... can you send official link to verify",
+                "this happened before? or new issue? pls explain clearly",
+                "ok i will do it... just tell me which account number you need",
+                "wait let me check my messages... got any sms from bank about this?",
+                "how much time i have to fix this? i need to withdraw salary tomorrow"
             ],
             "excited_winner": [
-                # Variant 1: Excited/confused
-                "Really?! I never entered any lottery but if its true, amazing! How do I claim?",
-                # Variant 2: Eager/compliant
-                "Wow! Tell me what to do quickly. Should I pay processing fee from my bank account?",
-                # Variant 3: Excited/cautious
-                "This is great news! But how did you get my number? Should I verify this somewhere?",
-                # Variant 4: Proactive
-                "Fantastic! Do I need to share my UPI ID? I use Paytm usually, is that okay?",
-                # Variant 5: Hesitant excitement
-                "I cant believe this... my friend also got such message. Where should I collect prize?"
+                "Really?! cant believe... i never entered lottery tho",
+                "wow this is amazing!! how do i claim it pls tell",
+                "omg!! is this for real? how did you get my number",
+                "Fantastic news yaar! what do i need to do now",
+                "wait wait... my friend also got message like this... is it legit",
+                "do i need to pay any fee first? i have paytm gpay both",
+                "This is great! should i share my bank details or upi id",
+                "i won really??? let me tell my wife lol... where to collect",
+                "ok ok im excited... which documents needed for prize claim",
+                "amazing!! can you send me official website link i want to see",
+                "how much is the prize exactly? and when will i get it",
+                "should i come to office or everything online? pls guide me"
             ],
             "confused_elderly": [
-                # Variant 1: Very confused
-                "I dont undorstand properly... can you explain slowly? Which button should I press?",
-                # Variant 2: Compliant/helpless
-                "Please help me... I'm not good with phone. Tell me step by step what to do.",
-                # Variant 3: Seeking help
-                "My son usually helps but he is not here. Can you call me and explain?",
-                # Variant 4: Trying to understand
-                "Wait, let me get my reading glasses... which account you said? The savings one?",
-                # Variant 5: Willing but confused
-                "I want to fix this. Should I go to bank branch or can do from phone only?"
+                "i dont undorstand properly... can u explain slowly pls",
+                "wait let me wear my glasses... which button you said",
+                "my son helps me usually but he not here now... can you repeat",
+                "im not good with phone... tell me step by step what to do",
+                "which account you talking about? the savings one or other one",
+                "should i go to bank branch or can do from phone only",
+                "pls help me... im confused which app to open",
+                "let me call my daughter she understands these things better",
+                "you can call me directly? easier for me to understand by talking",
+                "ok i want to fix this... but explain clearly how",
+                "is this urgent? or i can wait for my son to come home",
+                "which numbers i need to share? dont want to give wrong info"
             ],
             "cautious_user": [
-                # Variant 1: Skeptical
-                "I'm not sure about this... can you give me your employee ID to verify?",
-                # Variant 2: Testing authenticity
-                "Last time someone tried to cheat me. How do I know this is real? Give me proof.",
-                # Variant 3: Seeking verification
-                "Which department you are calling from exactly? I will call bank directly to confirm.",
-                # Variant 4: Conditional compliance
-                "Okay, I will help but first send me official email or SMS from bank number.",
-                # Variant 5: Cautious but willing
-                "Let me check... if this is genuine, I will provide details. What verification you need?"
+                "im not sure about this... sounds little suspicious to me",
+                "can you give your employee id? i will verify with bank directly",
+                "last time someone tried to cheat me... how do i know this real",
+                "which department exactly? i want to call bank helpline to confirm",
+                "ok i will cooperate but first send official email from bank id",
+                "prove this is genuine... send me sms from bank number",
+                "what verification you need? but i will check everything first",
+                "let me check bank app if there is any notification about this",
+                "can you tell me my account balance? if you really from bank you should know",
+                "im willing to help if genuine... share your official contact details",
+                "not convinced yet... tell me something only bank would know",
+                "i will call bank customer care now... what is your reference number"
             ]
         }
-        responses = fallback_responses.get(persona_key, ["I see... can you explain more clearly?"])
-        return responses[(turn_count - 1) % len(responses)]
+        
+        responses = fallback_responses.get(persona_key, [
+            "hmm... can you explain more clearly?",
+            "ok tell me what exactly you need",
+            "wait im not understanding... pls repeat",
+            "what should i do? guide me step by step"
+        ])
+        
+        # Use modulo with response count to cycle through variety
+        import random
+        # Add some randomness to avoid predictable patterns
+        if random.random() > 0.3:  # 70% use turn-based selection for consistency
+            return responses[(turn_count - 1) % len(responses)]
+        else:  # 30% use random selection for unpredictability
+            return random.choice(responses)
     
     def generate_neutral_reply(self) -> str:
-        """Generate neutral reply for non-scam messages - more human and helpful"""
+        """Generate neutral reply for non-scam messages - more human, varied and helpful"""
         neutral_responses = [
-            "Sure, I can help with that. What would you like to know?",
-            "Yes, I'm here. What do you need?",
-            "I understand. How can I assist you?",
-            "Okay, got it. What's next?",
-            "Thanks for reaching out. What can I do for you?",
-            "Alright, I'm listening. Please go ahead.",
-            "Received. Let me know what you need."
+            "yes im here... what do you need",
+            "ok tell me... how can i help",
+            "hi... what can i do for you",
+            "received your message... whats up",
+            "sure... go ahead tell me",
+            "im listening... pls continue",
+            "okay got it... what next",
+            "yes? what happened",
+            "hm... what you want to know",
+            "alright... explain more",
+            "ok im here... what is it",
+            "yeah? tell me whats the matter",
+            "received... let me know details",
+            "ok... im ready to help if needed"
         ]
         import random
         return random.choice(neutral_responses)

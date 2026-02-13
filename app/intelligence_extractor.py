@@ -247,3 +247,26 @@ class IntelligenceExtractor:
             intelligence.phoneNumbers or 
             intelligence.phishingLinks
         )
+    
+    def calculate_intelligence_quality(self, intelligence: ExtractedIntelligence) -> float:
+        """
+        Calculate intelligence quality as a percentage (0.0 to 1.0)
+        Based on how many of the 4 critical intel fields have data
+        (excludes suspiciousKeywords as it's less valuable)
+        
+        Returns:
+            float: Quality percentage (0.0 = no intel, 1.0 = all 4 fields populated)
+        """
+        critical_fields = [
+            bool(intelligence.bankAccounts),
+            bool(intelligence.upiIds),
+            bool(intelligence.phoneNumbers),
+            bool(intelligence.phishingLinks)
+        ]
+        
+        populated_fields = sum(critical_fields)
+        total_fields = len(critical_fields)  # 4 fields
+        
+        quality = populated_fields / total_fields if total_fields > 0 else 0.0
+        return quality
+

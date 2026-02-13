@@ -33,6 +33,11 @@ class OpenRouterProvider(LLMProvider):
         self.base_url = "https://openrouter.ai/api/v1"
         self.default_model = os.getenv("OPENROUTER_CONVERSATION_MODEL", "google/gemini-2.0-flash-exp:free")
         self._client = None
+        
+        # Read LLM enhancement settings from environment
+        self.frequency_penalty = float(os.getenv("LLM_FREQUENCY_PENALTY", "0.3"))
+        self.presence_penalty = float(os.getenv("LLM_PRESENCE_PENALTY", "0.2"))
+        self.top_p = float(os.getenv("LLM_TOP_P", "0.95"))
     
     def is_available(self) -> bool:
         """Check if OpenRouter is available"""
@@ -40,7 +45,7 @@ class OpenRouterProvider(LLMProvider):
     
     def generate(self, prompt: str, model: Optional[str] = None, 
                  temperature: float = 0.7, max_tokens: int = 100) -> Optional[str]:
-        """Generate text using OpenRouter API"""
+        """Generate text using OpenRouter API with enhanced parameters for human-like responses"""
         if not self.is_available():
             logger.warning("OpenRouter API key not set")
             return None
@@ -58,11 +63,15 @@ class OpenRouterProvider(LLMProvider):
             # Use default model if not specified
             model_to_use = model if model else self.default_model
             
+            # Enhanced parameters for more human-like, varied responses
             response = self._client.chat.completions.create(
                 model=model_to_use,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens,
+                top_p=self.top_p,  # Nucleus sampling for more diverse responses
+                frequency_penalty=self.frequency_penalty,  # Reduce repetition of phrases
+                presence_penalty=self.presence_penalty,  # Encourage topic diversity
             )
             
             return response.choices[0].message.content.strip()
@@ -79,6 +88,11 @@ class GroqProvider(LLMProvider):
         self.api_key = os.getenv("GROQ_API_KEY")
         self.default_model = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
         self._client = None
+        
+        # Read LLM enhancement settings from environment
+        self.frequency_penalty = float(os.getenv("LLM_FREQUENCY_PENALTY", "0.3"))
+        self.presence_penalty = float(os.getenv("LLM_PRESENCE_PENALTY", "0.2"))
+        self.top_p = float(os.getenv("LLM_TOP_P", "0.95"))
     
     def is_available(self) -> bool:
         """Check if Groq is available"""
@@ -86,7 +100,7 @@ class GroqProvider(LLMProvider):
     
     def generate(self, prompt: str, model: Optional[str] = None,
                  temperature: float = 0.7, max_tokens: int = 100) -> Optional[str]:
-        """Generate text using Groq API"""
+        """Generate text using Groq API with enhanced parameters for human-like responses"""
         if not self.is_available():
             logger.warning("Groq API key not set")
             return None
@@ -100,11 +114,15 @@ class GroqProvider(LLMProvider):
             # Use default model if not specified
             model_to_use = model if model else self.default_model
             
+            # Enhanced parameters for more human-like, varied responses
             response = self._client.chat.completions.create(
                 model=model_to_use,
                 messages=[{"role": "user", "content": prompt}],
                 temperature=temperature,
                 max_tokens=max_tokens,
+                top_p=self.top_p,  # Nucleus sampling for more diverse responses
+                frequency_penalty=self.frequency_penalty,  # Reduce repetition of phrases
+                presence_penalty=self.presence_penalty,  # Encourage topic diversity
             )
             
             return response.choices[0].message.content.strip()
