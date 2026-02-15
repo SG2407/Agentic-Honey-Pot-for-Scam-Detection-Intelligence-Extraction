@@ -16,12 +16,19 @@ services:
         sync: false
       - key: API_KEY
         value: team_recursives
-      - key: CALLBACK_URL
+      - key: GUVI_CALLBACK_URL
         value: https://hackathon.guvi.in/api/updateHoneyPotFinalResult
       - key: MESSAGE_TIMEOUT_SECONDS
         value: 10
       - key: ENVIRONMENT
         value: production
+      # LLM Response Enhancement Settings (higher values for more human-like, less repetitive responses)
+      - key: LLM_FREQUENCY_PENALTY
+        value: "0.6"
+      - key: LLM_PRESENCE_PENALTY
+        value: "0.4"
+      - key: LLM_TOP_P
+        value: "0.92"
       # New: UI Backend will use localhost since same service
       - key: HONEYPOT_API_URL
         value: http://localhost:10000
