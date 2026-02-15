@@ -26,6 +26,9 @@ class IntelligenceExtractor:
     # Indian phone: +91 followed by 10 digits starting with 6-9
     PHONE_PATTERN = r'(?<!\d)(?:(?:\+91[\s-]?)|(?:0)?)?[6-9]\d{9}(?!\d)'
     
+    # Email addresses
+    EMAIL_PATTERN = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+    
     PHISHING_LINK_PATTERN = r'https?://[^\s]+'
     
     # Context keywords to distinguish number types
@@ -147,6 +150,13 @@ class IntelligenceExtractor:
         
         return list(set(normalized))
     
+    def extract_emails(self, text: str) -> List[str]:
+        """Extract email addresses from text"""
+        matches = re.findall(self.EMAIL_PATTERN, text, re.IGNORECASE)
+        # Normalize to lowercase and remove duplicates
+        normalized = [email.lower() for email in matches]
+        return list(set(normalized))
+    
     def extract_pan_cards(self, text: str) -> List[str]:
         """Extract PAN card numbers: [A-Z]{5}[0-9]{4}[A-Z]"""
         matches = re.findall(self.PAN_PATTERN, text)
@@ -208,6 +218,7 @@ class IntelligenceExtractor:
         # Extract other intelligence
         upi_ids = self.extract_upi_ids(combined_text)
         phishing_links = self.extract_phishing_links(combined_text)
+        email_addresses = self.extract_emails(combined_text)
         suspicious_keywords = self.extract_suspicious_keywords(combined_text)
         
         # Add PAN/Aadhaar to suspicious keywords if found (for logging)
@@ -225,6 +236,8 @@ class IntelligenceExtractor:
             logger.info(f"✓ Found {len(phone_numbers)} phone number(s)")
         if phishing_links:
             logger.info(f"✓ Found {len(phishing_links)} phishing link(s)")
+        if email_addresses:
+            logger.info(f"✓ Found {len(email_addresses)} email address(es)")
         if suspicious_keywords:
             logger.info(f"✓ Found keywords: {', '.join(suspicious_keywords)}")
         
@@ -233,6 +246,7 @@ class IntelligenceExtractor:
             upiIds=upi_ids,
             phishingLinks=phishing_links,
             phoneNumbers=phone_numbers,
+            emailAddresses=email_addresses,
             suspiciousKeywords=suspicious_keywords
         )
     
