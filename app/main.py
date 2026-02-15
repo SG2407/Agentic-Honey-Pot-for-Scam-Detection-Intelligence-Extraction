@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.datastructures import UploadFile
 from anyio import EndOfStream
 
-from app.models import HoneypotRequest, HoneypotResponse, CallbackPayload
+from app.models import HoneypotRequest, HoneypotResponse, CallbackPayload, ExtractedIntelligence
 from app.scam_detector import ScamDetector
 from app.intelligence_extractor import IntelligenceExtractor
 from app.conversation_agent import ConversationAgent
@@ -298,6 +298,118 @@ async def verify_api_key(
 
 
 # ============================================================================
+# AGENT NOTES GENERATOR (Detailed, unique descriptions per conversation)
+# ============================================================================
+
+def generate_agent_notes(
+    scam_type: str,
+    intelligence: ExtractedIntelligence,
+    conversation_length: int,
+    conversation_history: list
+) -> str:
+    """
+    Generate detailed, unique agent notes describing scammer behavior and tactics.
+    Creates narrative-style description including specific intelligence extracted.
+    """
+    notes_parts = []
+    
+    # Part 1: Scam type and primary tactic
+    scam_descriptions = {
+        "credential_phishing": "Attempted credential phishing attack",
+        "financial_threat": "Financial threat-based scam involving account blocking claims",
+        "reward_scam": "Fraudulent prize/lottery/reward scheme",
+        "prize_scam": "Fake prize or lottery scam",
+        "impersonation": "Impersonation attack posing as authority figure",
+        "tech_support": "Tech support scam",
+        "investment_fraud": "Investment or financial fraud scheme"
+    }
+    primary_desc = scam_descriptions.get(scam_type, f"{scam_type.replace('_', ' ').title()} scam")
+    notes_parts.append(primary_desc)
+    
+    # Part 2: Specific tactics observed from keywords
+    tactics = []
+    if any(kw in intelligence.suspiciousKeywords for kw in ["urgent", "immediately", "now", "quickly", "hurry"]):
+        tactics.append("high-pressure urgency tactics")
+    if any(kw in intelligence.suspiciousKeywords for kw in ["blocked", "suspended", "locked", "closed"]):
+        tactics.append("account threat intimidation")
+    if any(kw in intelligence.suspiciousKeywords for kw in ["OTP", "PIN", "password", "CVV"]):
+        tactics.append("explicit credential harvesting")
+    if any(kw in intelligence.suspiciousKeywords for kw in ["prize", "winner", "lottery", "claim"]):
+        tactics.append("false reward claims")
+    if any(kw in intelligence.suspiciousKeywords for kw in ["KYC", "verify", "update details"]):
+        tactics.append("fake verification requests")
+    
+    if tactics:
+        notes_parts.append(f"employing {', '.join(tactics)}")
+    
+    # Part 3: Intelligence extracted (specific details)
+    intel_details = []
+    
+    if intelligence.phoneNumbers:
+        phone_list = ', '.join(intelligence.phoneNumbers[:3])  # First 3
+        count = len(intelligence.phoneNumbers)
+        intel_details.append(f"{count} phone number{'s' if count > 1 else ''} ({phone_list})")
+    
+    if intelligence.upiIds:
+        upi_list = ', '.join(intelligence.upiIds[:2])  # First 2
+        count = len(intelligence.upiIds)
+        intel_details.append(f"{count} UPI ID{'s' if count > 1 else ''} ({upi_list})")
+    
+    if intelligence.bankAccounts:
+        # Mask middle digits for privacy in notes
+        masked_accts = [f"{acc[:4]}...{acc[-4:]}" if len(acc) > 8 else acc for acc in intelligence.bankAccounts[:2]]
+        count = len(intelligence.bankAccounts)
+        intel_details.append(f"{count} bank account{'s' if count > 1 else ''} ({', '.join(masked_accts)})")
+    
+    if intelligence.phishingLinks:
+        # Extract domain from first link
+        import re
+        first_link = intelligence.phishingLinks[0]
+        domain_match = re.search(r'https?://([^/]+)', first_link)
+        domain = domain_match.group(1) if domain_match else first_link[:30]
+        count = len(intelligence.phishingLinks)
+        intel_details.append(f"{count} phishing link{'s' if count > 1 else ''} (domain: {domain})")
+    
+    if intelligence.emailAddresses:
+        email_list = ', '.join(intelligence.emailAddresses[:2])
+        count = len(intelligence.emailAddresses)
+        intel_details.append(f"{count} email address{'es' if count > 1 else ''} ({email_list})")
+    
+    if intel_details:
+        notes_parts.append(f"Scammer revealed: {'; '.join(intel_details)}")
+    
+    # Part 4: Engagement summary
+    notes_parts.append(f"Conversation lasted {conversation_length} messages")
+    
+    # Part 5: Behavioral patterns (analyze actual messages if available)
+    if conversation_history:
+        scammer_messages = [msg.text for msg in conversation_history if msg.sender == "scammer"]
+        if scammer_messages:
+            behaviors = []
+            # Check for repetition
+            if conversation_length > 5:
+                behaviors.append("persistent repeated requests")
+            # Check for impersonation indicators
+            combined_text = " ".join(scammer_messages).lower()
+            if any(word in combined_text for word in ["bank", "security team", "department", "official"]):
+                behaviors.append("posed as official entity")
+            if any(word in combined_text for word in ["employee id", "customer care", "helpline"]):
+                behaviors.append("provided fake credentials")
+            
+            if behaviors:
+                notes_parts.append(f"Behavioral patterns: {', '.join(behaviors)}")
+    
+    # Combine all parts with proper punctuation
+    agent_notes = ". ".join(notes_parts) + "."
+    
+    # Ensure notes are reasonably sized (truncate if too long)
+    if len(agent_notes) > 500:
+        agent_notes = agent_notes[:497] + "..."
+    
+    return agent_notes
+
+
+# ============================================================================
 # BACKGROUND PROCESSING FUNCTION
 # ============================================================================
 
@@ -410,33 +522,13 @@ async def process_message_background(
                 
                 callback_sent_sessions.add(session_id)
                 
-                # Generate agent notes describing scammer behavior and tactics
-                scam_tactics = []
-                
-                # Analyze scammer behavior from conversation
-                if detection_result.scam_type == "credential_phishing":
-                    scam_tactics.append("requesting sensitive credentials (OTP/PIN/password)")
-                elif detection_result.scam_type == "financial_threat":
-                    scam_tactics.append("using urgency and account blocking threats")
-                elif detection_result.scam_type == "reward_scam":
-                    scam_tactics.append("false prize/lottery claims")
-                elif detection_result.scam_type == "impersonation":
-                    scam_tactics.append("impersonating authority figures")
-                
-                if any(kw in intelligence.suspiciousKeywords for kw in ["urgent", "immediately", "now"]):
-                    scam_tactics.append("urgency tactics")
-                
-                if intelligence.phishingLinks:
-                    scam_tactics.append("sharing malicious links")
-                
-                if intelligence.bankAccounts or intelligence.upiIds:
-                    scam_tactics.append("attempting payment redirection")
-                
-                # Build agent notes
-                if scam_tactics:
-                    agent_notes = f"Scammer used {', '.join(scam_tactics)}"
-                else:
-                    agent_notes = f"Scammer employed {detection_result.scam_type} tactics"
+                # Generate detailed, unique agent notes describing specific scammer behavior
+                agent_notes = generate_agent_notes(
+                    scam_type=detection_result.scam_type,
+                    intelligence=intelligence,
+                    conversation_length=total_msgs,
+                    conversation_history=conversation_history
+                )
                 
                 from app.models import CallbackPayload
                 payload = CallbackPayload(

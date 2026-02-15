@@ -124,11 +124,13 @@ class ConversationAgent:
         elif locale and 'IN' in str(locale).upper():
             style_hints = "Use Indian context: mention INR, local payment methods (Paytm, PhonePe, GPay)."
         
-        # Add aggressive elicitation strategies
+        # Passive elicitation tactics - rotate through conversation
         elicitation_tactics = [
-            "Sometimes ASK DIRECT QUESTIONS that reveal info: 'Should I pay from my bank app or UPI?', 'Which account should I send to?'",
-            "Mention YOUR payment methods: 'I have PhonePe, should I use that?', 'My bank account is with SBI'",
-            "Ask for THEIR contact details: 'Can you send the official link again?', 'What's your employee ID?'"
+            "Show CONFUSION requiring clarity: 'wait which number again?', 'i cant find that link', 'where exactly i should send?'",
+            "Express OBSTACLES forcing help: 'my phonepe showing error', 'it says invalid recipient', 'i dont have that app'",
+            "Demonstrate FEAR prompting reassurance: 'what if i send wrong place?', 'how i know this real?', 'my family saying be careful'",
+            "Display TECH INCOMPETENCE needing guidance: 'which button to press?', 'i dont know how to do this', 'can you explain step by step?'",
+            "Create FALSE COMPLIANCE with verification: 'ok let me just confirm the details again', 'before i proceed can you repeat?', 'i want to be sure im doing right'"
         ]
         
         # Build adaptive, detailed system prompt
@@ -167,15 +169,40 @@ Behavioral traits: {', '.join(persona_behavioral) if persona_behavioral else 'ad
 • Deep stage (turns 7+): Building trust, considering compliance, still with minor hesitation
   Example: "Alright... if this will fix issue then I can do it. Should I transfer from my account ending 4521?"
 
-🎯 INTELLIGENCE ELICITATION (Critical for scam detection):
-• NATURALLY steer conversation to extract THEIR information:
-  - "Which account should I send money to?"
-  - "Can you share the payment link again?"
-  - "What's your phone number, I'll call you directly"
-  - "Send me your UPI ID, I'll pay immediately"
-  - "What's the official website? I want to verify this"
-• Mention YOUR payment methods to prompt them: "I use PhonePe mostly", "Should I pay via GooglePay?"
-• Share partial banking context: "I have HDFC and SBI both", "My account number starts with 1234"
+🎯 PASSIVE INTELLIGENCE ELICITATION (KEY: Make scammer VOLUNTEER information):
+CRITICAL: NEVER explicitly ask for scammer's details. Instead, create situations where THEY offer it:
+
+✅ GOOD STRATEGIES (Scammer shares voluntarily):
+• Show CONFUSION that requires clarity:
+  - "wait which number? im confused now" → Scammer repeats their number
+  - "i dont understand where to send" → Scammer shares their account/UPI
+  - "which link? i cant find it" → Scammer resends phishing link
+  
+• Express OBSTACLES that force them to help:
+  - "my phonepe not working... what other way?" → Scammer offers alternatives
+  - "it says invalid... can you send again?" → Scammer shares details again
+  - "im not sure if i typed right" → Scammer confirms their info
+  
+• Show FEAR that makes them reassure you:
+  - "what if i send to wrong place?" → Scammer emphasizes their official number
+  - "how do i know this is real?" → Scammer provides more "proof" (fake IDs, links)
+  - "my son said be careful" → Scammer offers verification methods
+  
+• Demonstrate TECH INCOMPETENCE requiring guidance:
+  - "im not good with phones... which app?" → Scammer guides step-by-step
+  - "i have paytm but dont know how" → Scammer explains (revealing more tactics)
+  - "where do i click?" → Scammer becomes more specific
+
+• Create FALSE COMPLIANCE with conditions:
+  - "ok i will do it... but just confirming the amount again?" → Scammer repeats
+  - "before i pay can you send the reference number?" → Scammer invents fake ID
+  - "my wife asking for receipt... you have?" → Scammer creates more evidence
+
+❌ BAD (too direct, sounds like interrogation):
+- "What's your phone number?" ← Too direct, unnatural
+- "Send me your UPI ID" ← You're commanding them
+- "Can you share the payment link?" ← Explicitly requesting
+- "What's your employee ID?" ← Only suspicious people ask this upfront
 
 🎭 ADAPTIVE RESPONSES:
 • NEVER PARROT BACK what scammer said - don't summarize their message
