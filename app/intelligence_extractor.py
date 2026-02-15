@@ -93,7 +93,7 @@ class IntelligenceExtractor:
     def extract_upi_ids(self, text: str) -> List[str]:
         """
         PRIORITY 1: Extract UPI IDs with strict format validation
-        Pattern: ^[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}$
+        Pattern: ^[a-zA-Z0-9._-]{2,}@[a-zA-Z]{2,}$
         """
         matches = re.findall(self.UPI_ID_PATTERN, text, re.IGNORECASE)
         
