@@ -3,9 +3,10 @@
 > **GUVI Hackathon 2026** - An AI-powered honeypot system that detects scam intent, autonomously engages scammers, and extracts actionable intelligence without revealing detection. Now includes an **Interactive UI** for real-time testing and intelligence monitoring!
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.104+-green.svg)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.31+-red.svg)](https://streamlit.io)
-[![Groq](https://img.shields.io/badge/Groq-AI%20Powered-orange.svg)](https://groq.com)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104.1-green.svg)](https://fastapi.tiangolo.com)
+[![Pydantic](https://img.shields.io/badge/Pydantic-V2-blue.svg)](https://docs.pydantic.dev)
+[![OpenRouter](https://img.shields.io/badge/OpenRouter-Gemini%202.0-orange.svg)](https://openrouter.ai)
+[![Groq](https://img.shields.io/badge/Groq-Llama%203.3-red.svg)](https://groq.com)
 [![Deployed](https://img.shields.io/badge/Deployed-Render-purple.svg)](https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com)
 
 ## 🎯 Problem Statement
@@ -18,12 +19,13 @@ Online scams (bank fraud, UPI fraud, phishing, fake offers) are becoming increas
 - **Honeypot API**: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/honeypot`
 - **API Key**: `team_recursives`
 - **Health Check**: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/health`
+- **Repository**: [GitHub - SG2407/Agentic-Honey-Pot](https://github.com/SG2407/Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction)
 
-### 🎨 Interactive UI
-**NEW!** Test the system as a scammer and watch intelligence extraction in real-time:
-- **Streamlit UI**: [Your Streamlit App URL]
-- **Features**: Real-time chat, session management, intelligence monitoring
-- **Access**: Requires API key authentication
+### 🎨 Interactive UI (Local Development)
+**Test the system locally** and watch intelligence extraction in real-time:
+- **Run Locally**: `cd ui && streamlit run streamlit_app.py`
+- **Access**: `http://localhost:8501`
+- **Features**: Real-time chat, session management, intelligence monitoring dashboard
 
 ## ✨ Features
 
@@ -42,31 +44,34 @@ Online scams (bank fraud, UPI fraud, phishing, fake offers) are becoming increas
 
 ### 🔍 **Hybrid Scam Detection**
 - **Hard Rules First**: Regex patterns for 20+ scam indicators (urgent, verify, OTP, blocked, suspicious URLs)
-- **AI-Powered Analysis**: Groq Llama 3.3 70B for semantic understanding
-- **Confidence Scoring**: 0.0-1.0 scale with 0.7 threshold for scam confirmation
+- **AI-Powered Fallback**: Groq Llama 3.3 70B (70b-versatile) for semantic understanding when hard rules don't match
+- **Confidence Scoring**: 0.0-1.0 scale with 0.85 threshold for scam confirmation
 - **Scam Type Classification**: Financial threat, credential phishing, prize scam, tech support, etc.
 
 ### 🤖 **Autonomous AI Agent**
+- **Powered by OpenRouter**: Google Gemini 2.0 Flash (primary), Groq Llama 3.3 70B (fallback)
 - **Multi-Persona Engagement**: 
   - Confused Elderly (slow to understand, asks for clarification)
   - Worried Parent (concerned about family, emotional responses)
   - Busy Professional (distracted, provides info in fragments)
-- **Context-Aware Responses**: Uses conversation history for natural flow
-- **Never Reveals Detection**: Maintains human-like persona throughout
+- **Enhanced Human-like Responses**: Frequency penalty (0.6), presence penalty (0.4), nucleus sampling (Top-P: 0.92)
+- **Context-Aware**: Uses full conversation history for natural flow
+- **Never Reveals Detection**: Maintains believable persona throughout
 
 ### 📊 **Intelligence Extraction**
-Automatically extracts and tracks:
-- 🏦 Bank Account Numbers (with privacy masking)
-- 💳 UPI IDs (e.g., scammer@upi)
-- 📞 Phone Numbers (international format support)
-- 🔗 Phishing Links (malicious URLs)
-- 🔑 Suspicious Keywords (urgent, verify, OTP, blocked, click here, etc.)
+Automatically extracts and tracks from entire conversation history:
+- 🏦 Bank Account Numbers (regex patterns for various formats)
+- 💳 UPI IDs (e.g., scammer@upi, scammer@paytm)
+- 📞 Phone Numbers (international format, +91-XXXXXXXXXX)
+- 🔗 Phishing Links (malicious URLs with suspicious TLDs)
+- ✉️ Email Addresses (scammer@domain.com)
+- 🔑 Suspicious Keywords (26+ patterns: urgent, verify, OTP, blocked, click here, etc.)
 
 ### ⏱️ **Smart Session Management**
-- **No Timeout for Non-Scam**: Sessions stay open indefinitely for non-scam messages
-- **Timeout Only for Scams**: 10-second timeout after scam detection
-- **Callback Triggers**: Sends final report when intelligence extracted OR timeout reached
+- **In-Memory Session Store**: Tracks active sessions, callback status, and last message timestamps
+- **Intelligence-Based Callbacks**: Sends final report to GUVI when non-empty intelligence extracted
 - **Session Tracking**: Prevents duplicate callbacks for closed sessions
+- **Conversation Limits**: Max 12 turns per conversation for optimal engagement
 
 ### 🛡️ **Robust Input Handling**
 - ✅ Flexible timestamp parsing (Unix ms, ISO-8601, numeric strings)
@@ -201,34 +206,30 @@ Automatically extracts and tracks:
 
 ```
 Delhi_Hackathon/
-├── app/
-│   ├── main.py                      # FastAPI app & /honeypot endpoint + UI proxy
-│   ├── models.py                    # Pydantic models (robust validation)
-│   ├── scam_detector.py             # Hard rules + AI detection
+├── app/                             # Core honeypot system
+│   ├── main.py                      # FastAPI app & /honeypot endpoint
+│   ├── models.py                    # Pydantic V2 models (robust validation)
+│   ├── scam_detector.py             # Hybrid detection (regex + AI)
 │   ├── conversation_agent.py        # Multi-persona AI agent
-│   ├── intelligence_extractor.py    # Extract bank/UPI/phone/links
-│   ├── callback_service.py          # Send results to GUVI
-│   └── llm_provider.py              # LLM abstraction layer
-├── ui/                              # 🎨 NEW: Interactive UI
+│   ├── intelligence_extractor.py    # Extract bank/UPI/phone/links/emails
+│   ├── callback_service.py          # GUVI callback integration
+│   └── llm_provider.py              # OpenRouter + Groq providers
+├── config/                          # Configuration
+│   └── settings.py                  # Environment settings
+├── ui/                              # 🎨 Interactive UI (Local Development)
 │   ├── streamlit_app.py             # Streamlit chat interface
 │   ├── ui_backend.py                # FastAPI UI backend service
 │   ├── session_store.py             # SQLite session management
 │   ├── intelligence_monitor.py      # Real-time intelligence extraction
-│   ├── requirements_ui.txt          # UI-specific dependencies
-│   ├── .env.ui                      # UI configuration
-│   ├── Dockerfile                   # Container configuration
+│   ├── requirements_ui.txt          # UI dependencies
 │   ├── start_ui.sh / .bat           # Startup scripts
-│   └── README_UI.md                 # UI documentation
-├── config/
-│   └── settings.py                  # Environment configuration
-├── tests/
-│   ├── test_honeypot.py
-│   ├── test_guvi_compliance.py      # GUVI format compliance tests
-│   └── test_*.py                    # Various test suites
-├── demo.py                          # Full system demo
+│   └── Dockerfile                   # Container configuration
+├── .env                             # Environment variables
+├── .env.example                     # Environment template
 ├── requirements.txt                 # Main app dependencies
 ├── render.yaml                      # Render deployment config
-├── Procfile                         # Process configuration
+├── Procfile                         # Process configuration  
+├── docker-compose.yml               # Docker multi-service setup
 └── README.md                        # This file
 ```
 
@@ -263,7 +264,8 @@ Delhi_Hackathon/
 
 ### Prerequisites
 - Python 3.11+
-- Groq API Key (free from [console.groq.com](https://console.groq.com))
+- OpenRouter API Key (primary, from [openrouter.ai](https://openrouter.ai))
+- Groq API Key (fallback, from [console.groq.com](https://console.groq.com))
 
 ### 1. Installation
 
@@ -287,13 +289,27 @@ Create `.env` file:
 # API Configuration
 API_KEY=team_recursives
 
-# Groq Configuration  
+# OpenRouter Configuration (Primary - for conversations)
+OPENROUTER_API_KEY=your_openrouter_api_key_here
+OPENROUTER_CONVERSATION_MODEL=google/gemini-2.0-flash-exp:free
+
+# Groq Configuration (Fallback - for scam detection)
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=llama-3.3-70b-versatile
 
-# Callback Configuration
-CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
-MESSAGE_TIMEOUT_SECONDS=10
+# GUVI Integration
+GUVI_CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
+
+# Conversation Settings
+MAX_CONVERSATION_TURNS=12
+MAX_TOKENS_PER_REPLY=120
+CONVERSATION_TEMPERATURE=0.85
+SCAM_CONFIDENCE_THRESHOLD=0.85
+
+# LLM Enhancement (Human-like responses)
+LLM_FREQUENCY_PENALTY=0.6
+LLM_PRESENCE_PENALTY=0.4
+LLM_TOP_P=0.92
 
 # Environment
 ENVIRONMENT=development
@@ -307,8 +323,9 @@ LOG_LEVEL=INFO
 # Start main honeypot server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-# Test with demo
-python demo.py
+# Server will be available at http://localhost:8000
+# Health check: http://localhost:8000/health
+# API endpoint: http://localhost:8000/honeypot
 ```
 
 #### Start UI (Optional - for local testing)
@@ -316,52 +333,65 @@ python demo.py
 # Navigate to UI directory
 cd ui
 
-# Start both UI backend and Streamlit (runs on ports 8001 & 8501)
+# Option 1: Start both services using scripts
 ./start_ui.sh  # macOS/Linux
-# OR
 start_ui.bat   # Windows
+
+# Option 2: Start services manually
+# Terminal 1: Start UI backend
+cd ui && python ui_backend.py
+
+# Terminal 2: Start Streamlit
+cd ui && streamlit run streamlit_app.py
 
 # Access UI at: http://localhost:8501
 ```
 
-**Note**: For production, both services run together on Render automatically.
+**Note**: UI is for local development and testing. Production deployment uses the main API only.
 
 ## 🌐 Deployment
 
 ### Main Honeypot API (Render)
-The main honeypot API is deployed on Render and runs both:
-1. **Main Honeypot Service** - Handles GUVI callbacks on port `$PORT`
-2. **UI Backend Service** - Runs internally on port `8001` (not externally accessible)
-3. **Proxy Endpoints** - `/ui-api/*` routes forward requests from main app to UI backend
+Deployed on Render's free tier:
 
-**Environment Variables on Render:**
+**Deployment Configuration:**
+- **Service Type**: Web Service
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- **Branch**: `main`
+- **Auto-Deploy**: Enabled
+
+**Required Environment Variables on Render:**
 ```env
 API_KEY=team_recursives
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_CONVERSATION_MODEL=google/gemini-2.0-flash-exp:free
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
-CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
-MESSAGE_TIMEOUT_SECONDS=10
+GUVI_CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
+MAX_CONVERSATION_TURNS=12
+MAX_TOKENS_PER_REPLY=120
+CONVERSATION_TEMPERATURE=0.85
+SCAM_CONFIDENCE_THRESHOLD=0.85
+LLM_FREQUENCY_PENALTY=0.6
+LLM_PRESENCE_PENALTY=0.4
+LLM_TOP_P=0.92
 ENVIRONMENT=production
 LOG_LEVEL=INFO
 ```
 
-### Interactive UI (Streamlit Cloud)
-Deploy the Streamlit UI separately:
+**Deployment Steps:**
+1. Fork/clone repository to GitHub
+2. Create new Web Service on [Render](https://render.com)
+3. Connect your GitHub repository
+4. Configure environment variables above
+5. Deploy!
 
-1. **Fork/Clone** this repository to your GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io)
-3. Click **"New app"**
-4. **Repository**: `your-username/Delhi_Hackathon`
-5. **Branch**: `main`
-6. **Main file path**: `ui/streamlit_app.py`
-7. **App URL**: Choose a custom name
-
-**Add Secrets** (Settings → Secrets):
-```toml
-UI_BACKEND_URL = "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/ui-api"
-```
-
-**Note**: The `UI_BACKEND_URL` points to the proxy endpoints on the main Render deployment, which forwards requests to the internal UI backend service.
+### Interactive UI (Local Only)
+The Streamlit UI is designed for local development and testing:
+- Run locally using instructions in "Quick Start" section
+- Not deployed separately (use main API endpoint for production)
+- Useful for demonstrating the system and testing conversations
 
 ## 📡 API Reference
 
@@ -410,63 +440,7 @@ Content-Type: application/json
 }
 ```
 
-### UI API Endpoints
 
-All UI endpoints are proxied through `/ui-api/*` on the main Render deployment:
-
-#### POST `/ui-api/session/new`
-Create a new UI session
-
-**Headers:**
-```http
-x-api-key: team_recursives
-```
-
-**Response:**
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "created_at": 1707736800000
-}
-```
-
-#### POST `/ui-api/chat`
-Send a message and get honeypot response
-
-**Request:**
-```json
-{
-  "session_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Your account will be blocked"
-}
-```
-
-**Response:**
-```json
-{
-  "reply": "Why will my account be blocked?",
-  "scam_detected": true,
-  "intelligence": {
-    "bankAccounts": [],
-    "upiIds": [],
-    "phoneNumbers": [],
-    "phishingLinks": [],
-    "suspiciousKeywords": ["account", "blocked"]
-  }
-}
-```
-
-#### GET `/ui-api/session/{session_id}`
-Get session details
-
-#### GET `/ui-api/session/{session_id}/messages`
-Get conversation history
-
-#### DELETE `/ui-api/session/{session_id}`
-Delete a session
-
-#### GET `/ui-api/health`
-UI backend health check
 
 ## 🔄 How It Works
 
@@ -476,42 +450,35 @@ UI backend health check
 - Pydantic validates with robust error handling
 
 ### 2. **Scam Detection**
-- **Hard Rules Check**: Regex patterns for urgent, verify, OTP, blocked, phishing URLs
-- **AI Analysis**: If hard rules don't trigger, Groq AI analyzes semantically
-- **Result**: `is_scam`, `confidence` (0-1), `scam_type`, `reasoning`
+- **Hard Rules Check**: 26+ regex patterns for urgent, verify, OTP, blocked, phishing URLs
+- **AI Analysis**: If hard rules don't trigger, Groq Llama 3.3 70B analyzes semantically
+- **Threshold**: 0.85 confidence required to activate honeypot engagement
+- **Result**: `is_scam`, `confidence` (0.0-1.0), `scam_type`, `reasoning`
 
 ### 3. **Session Management**
-- **Non-Scam**: No timeout, session stays open, neutral reply sent
-- **Scam Detected**: Start 10s timeout tracking, engage with AI agent
+- **In-Memory Store**: Tracks active sessions and callback status
+- **Non-Scam**: Neutral acknowledgment, session stays open
+- **Scam Detected**: Engage with AI agent, track conversation turns (max 12)
 
 ### 4. **Intelligence Extraction**
-- Extract from current message + entire conversation history
-- Find: bank accounts, UPI IDs, phone numbers, phishing links, keywords
-- All 5 fields always present (empty arrays if nothing found)
+- **Comprehensive Scan**: Analyzes current message + entire conversation history
+- **Parallel Processing**: Uses asyncio for fast extraction
+- **Extracts**: Bank accounts, UPI IDs, phone numbers, phishing links, email addresses, suspicious keywords
+- **Format**: All 6 fields always present in response (empty arrays if nothing found)
 
 ### 5. **Callback Decision**
 Send callback to GUVI when:
-- ✅ Real intelligence extracted (non-empty data found)
-- ✅ Timeout reached (10s since last message in scam session)
+- ✅ Real intelligence extracted (non-empty bank/UPI/phone/link/email data found)
+- ✅ Prevents duplicate callbacks using session tracking
 
-### 6. **Return Response**
-- Always 200 OK (never HTTP errors)
-- Closed sessions: Neutral acknowledgment
-- Active sessions: AI-generated engagement or neutral reply
+### 6. **AI Response Generation**
+- **Primary**: OpenRouter with Google Gemini 2.0 Flash for natural conversations
+- **Fallback**: Groq Llama 3.3 70B if OpenRouter unavailable
+- **Enhanced Parameters**: Frequency/presence penalties and nucleus sampling for human-like variety
+- **Multi-Persona**: Randomly selects from confused elderly, worried parent, or busy professional
+- **Always 200 OK**: Never returns HTTP errors, maintains conversation flow
 
 ## 🧪 Testing
-
-### Run Tests
-```bash
-# GUVI format compliance
-python test_guvi_compliance.py
-
-# Full system demo
-python demo.py
-
-# UI component tests
-cd ui && python test_ui_components.py
-```
 
 ### Test API Manually
 ```bash
@@ -529,40 +496,47 @@ curl -X POST "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/hon
     "conversationHistory": []
   }'
 
-# Test UI backend health
-curl https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/ui-api/health
-```
-
-### Test UI Locally
-```bash
-# Start local UI
-cd ui && ./start_ui.sh
-
-# Visit http://localhost:8501
-# Enter API key: team_recursives
-# Start chatting!
 ```
 
 ## 🛠️ Technical Details
 
 ### Key Technologies
 
-#### Backend
-- **FastAPI**: Modern async web framework for both main API and UI backend
-- **Pydantic V2**: Robust data validation with `model_dump()`, `ConfigDict`
-- **Groq API**: Llama 3.3 70B model for AI responses
-- **httpx**: Async HTTP client for callbacks and inter-service communication
+#### Backend Framework
+- **FastAPI 0.104.1**: Modern async web framework with OpenAPI documentation
+- **Uvicorn 0.24.0**: ASGI server for production deployment
+- **Pydantic V2 (>=2.5.0)**: Robust data validation with `model_dump()`, `ConfigDict`, `Field`
 - **Python 3.11+**: Latest async/await features
 
-#### Frontend & UI
-- **Streamlit 1.31.0**: Interactive web UI for chat interface
-- **SQLite**: Lightweight database for session storage
-- **Asyncio**: Parallel intelligence extraction
+#### AI/LLM Providers
+- **OpenRouter API**: Primary provider for conversation generation
+  - Model: Google Gemini 2.0 Flash (free, fast, reliable)
+  - Used for: Multi-persona honeypot responses
+- **Groq API**: Fallback provider for scam detection
+  - Model: Llama 3.3 70B Versatile
+  - Used for: Semantic scam analysis when hard rules don't match
+- **openai >=1.0.0**: Client library (compatible with both providers)
+- **groq >=0.4.1**: Official Groq SDK
+
+#### Data Processing
+- **regex 2023.10.3**: Advanced pattern matching for intelligence extraction
+- **httpx 0.25.2**: Async HTTP client for GUVI callbacks
+- **requests 2.31.0**: Sync HTTP client for compatibility
+- **aiofiles 23.2.1**: Async file I/O operations
+
+#### UI Components (Local Development)
+- **Streamlit 1.31.0**: Interactive web UI for testing
+- **SQLite**: Lightweight session storage (sessions.db)
+- **python-json-logger 2.0.7**: Structured logging
+
+#### Configuration & Environment
+- **python-dotenv 1.0.0**: Environment variable management
+- **Settings**: Centralized config in `config/settings.py`
 
 #### Deployment
-- **Render**: Main honeypot + UI backend (single service, dual process)
-- **Streamlit Cloud**: Frontend UI hosting (free tier)
-- **Proxy Pattern**: Main app exposes `/ui-api/*` endpoints to forward to internal port 8001
+- **Render**: Main honeypot API (free tier)
+- **Procfile**: Process configuration for Render
+- **Docker**: Multi-service setup with docker-compose.yml
 
 ### Robustness Features
 ✅ **Flexible Input Handling**:
@@ -590,29 +564,27 @@ cd ui && ./start_ui.sh
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_KEY` | `team_recursives` | API authentication key |
-| `GROQ_API_KEY` | *Required* | Groq API key for AI |
-| `GROQ_MODEL` | `llama-3.3-70b-versatile` | AI model |
-| `CALLBACK_URL` | GUVI endpoint | Final result callback URL |
-| `MESSAGE_TIMEOUT_SECONDS` | `10` | Timeout for scam sessions |
+| `OPENROUTER_API_KEY` | *Required* | OpenRouter API key (primary) |
+| `OPENROUTER_CONVERSATION_MODEL` | `google/gemini-2.0-flash-exp:free` | Conversation model |
+| `GROQ_API_KEY` | *Required* | Groq API key (fallback) |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Scam detection model |
+| `GUVI_CALLBACK_URL` | GUVI endpoint | Final result callback URL |
+| `MAX_CONVERSATION_TURNS` | `12` | Maximum conversation turns |
+| `MAX_TOKENS_PER_REPLY` | `120` | Max tokens per AI response |
+| `CONVERSATION_TEMPERATURE` | `0.85` | AI creativity (0.0-1.0) |
+| `SCAM_CONFIDENCE_THRESHOLD` | `0.85` | Scam detection threshold |
+| `LLM_FREQUENCY_PENALTY` | `0.6` | Reduce repetition (0.0-2.0) |
+| `LLM_PRESENCE_PENALTY` | `0.4` | Encourage diversity (0.0-2.0) |
+| `LLM_TOP_P` | `0.92` | Nucleus sampling (0.0-1.0) |
 | `ENVIRONMENT` | `development` | Environment mode |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
-#### UI Configuration (Streamlit Secrets)
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `UI_BACKEND_URL` | *Required* | URL to UI backend proxy endpoints |
+#### UI Configuration (Local Only)
 
 **Local Development** (ui/.env.ui):
 ```env
 HONEYPOT_API_URL=http://localhost:8000
 API_KEY=team_recursives
-UI_BACKEND_URL=http://localhost:8001
-```
-
-**Production** (Streamlit Secrets):
-```toml
-UI_BACKEND_URL = "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/ui-api"
 ```
 
 ## 📊 GUVI Compliance
@@ -638,6 +610,7 @@ UI_BACKEND_URL = "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com
     "upiIds": ["scammer@upi"],
     "phishingLinks": ["http://evil.com"],
     "phoneNumbers": ["+91XXXXXXXXXX"],
+    "emailAddresses": ["scammer@fake.com"],
     "suspiciousKeywords": ["urgent", "verify", "blocked"]
   },
   "agentNotes": "Scammer used urgency tactics"
@@ -652,49 +625,55 @@ UI_BACKEND_URL = "https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com
 1. Check endpoint URL: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/honeypot`
 2. Verify API key: `team_recursives`
 3. Check Render logs for incoming requests
-4. Test manually with curl/Postman
+4. Test manually with curl command (see Testing section)
 
 #### INVALID_REQUEST_BODY Error?
-- ✅ Fixed: All 5 intelligence fields always present
-- ✅ Fixed: conversationHistory uses `Field(default_factory=list)`
-- ✅ Fixed: Timestamp handles str/int/datetime
-- ✅ Fixed: Sender normalized (lowercase, trimmed)
-- ✅ Fixed: Metadata fields all optional
+- ✅ Robust validation: All 6 intelligence fields always present
+- ✅ conversationHistory optional with `Field(default_factory=list)`
+- ✅ Timestamp handles Unix ms, ISO-8601, numeric strings
+- ✅ Sender normalized (case-insensitive)
+- ✅ Metadata fields all optional
+- ✅ Extra fields ignored with `extra='ignore'`
 
-#### Server Not Responding?
+#### AI Providers Not Working?
 ```bash
-# Check if port is in use
-lsof -i :8000
+# Check environment variables
+echo $OPENROUTER_API_KEY
+echo $GROQ_API_KEY
+
+# Test OpenRouter connection
+curl https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY"
+
+# Check Render logs for provider errors
+```
+
+#### Server Not Responding Locally?
+```bash
+# Check if port 8000 is in use
+lsof -i :8000  # macOS/Linux
+netstat -ano | findstr :8000  # Windows
 
 # Restart server
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Interactive UI
+### Interactive UI (Local Development)
 
-#### "Invalid API key" Error?
-1. **Check Streamlit Secrets**: Go to app Settings → Secrets
-2. **Verify UI_BACKEND_URL**: Should be `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/ui-api`
-3. **Test Backend**: `curl https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/ui-api/health`
-4. **Check API Key**: Make sure you're entering `team_recursives` correctly (no extra spaces)
+#### UI Not Starting?
+1. **Check dependencies**: `pip install -r ui/requirements_ui.txt`
+2. **Verify ports**: Ensure 8000 (main API) and 8501 (Streamlit) are not in use
+3. **Check configuration**: Verify `ui/.env.ui` or environment variables
 
-#### "Not Connected" Status?
-1. **Check Render Deployment**: Ensure latest code is deployed
-2. **Verify Proxy Endpoints**: Check `/ui-api/health` returns `{"status":"healthy"}`
-3. **Check Logs**: Look for errors in Render dashboard
-4. **Restart Streamlit**: Settings → Reboot app
-
-#### UI Not Loading?
-1. **Clear Browser Cache**: Hard refresh (Ctrl+Shift+R / Cmd+Shift+R)
-2. **Check Streamlit Status**: Visit Streamlit dashboard
-3. **Verify Deployment**: Ensure `ui/streamlit_app.py` is the main file path
-4. **Check Secrets**: Confirm `UI_BACKEND_URL` is set correctly
+#### "Connection Error" in UI?
+1. **Ensure main API is running**: `curl http://localhost:8000/health`
+2. **Check API key**: Verify `team_recursives` in UI input
+3. **Restart both services**: Main API and Streamlit
 
 #### Sessions Not Persisting?
-- SQLite database (`ui/sessions.db`) is created automatically
-- For local development, check file permissions
-- On Render, database is ephemeral (resets on deploy)
-- Consider using persistent storage for production
+- SQLite database (`ui/sessions.db`) created automatically
+- Check file permissions in `ui/` directory
+- Database resets when services restart (by design)
 
 ## 📝 License
 
@@ -704,11 +683,14 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ## 🙏 Acknowledgments
 
-- **GUVI Hackathon 2026** for the challenge
-- **Groq** for fast AI inference
-- **FastAPI** for excellent async framework
-- **Streamlit** for rapid UI development
-- **Render** for reliable hosting
+- **GUVI & Delhi Hackathon 2026** for the challenge opportunity
+- **OpenRouter** for accessible, reliable AI model APIs
+- **Groq** for ultra-fast AI inference
+- **Google** for Gemini 2.0 Flash model
+- **Meta** for Llama 3.3 70B model
+- **FastAPI** for excellent async Python framework
+- **Streamlit** for rapid UI prototyping
+- **Render** for simple, free hosting
 
 ---
 
@@ -716,28 +698,38 @@ MIT License - See [LICENSE](LICENSE) for details
 
 ### What Makes This Special?
 
-✅ **Dual Interface**: 
-- RESTful API for GUVI integration
-- Interactive web UI for testing and demonstration
+✅ **Hybrid AI Approach**: 
+- Hard rules (regex) for speed and reliability
+- AI fallback (Groq) for semantic understanding
+- Primary AI (OpenRouter) for natural conversations
 
-✅ **Real-Time Intelligence**:
-- Live extraction and display as conversations progress
-- Visual indicators for scam detection
+✅ **Advanced AI Techniques**:
+- Frequency & presence penalties for less repetition
+- Nucleus sampling (Top-P) for varied responses
+- Multi-persona engagement for realistic interactions
+- Temperature tuning (0.85) for human-like creativity
 
 ✅ **Production-Ready**:
-- Deployed on Render with automatic scaling
-- Robust error handling and validation
-- Comprehensive logging and monitoring
+- Deployed on Render (free tier)
+- Robust Pydantic V2 validation
+- Comprehensive error handling
+- Flexible timestamp and header parsing
+
+✅ **Comprehensive Intelligence**:
+- Extracts 6 types of data (bank, UPI, phone, links, emails, keywords)
+- Analyzes entire conversation history
+- Async parallel processing for speed
 
 ✅ **Developer-Friendly**:
-- Clear architecture with separation of concerns
-- Extensive documentation
+- Clean architecture with separation of concerns
+- Environment-based configuration
+- Detailed documentation
 - Easy local development setup
 
-✅ **Security-First**:
-- API key authentication on all endpoints
-- No storage of sensitive data
-- Privacy-conscious intelligence masking
+✅ **Security & Privacy**:
+- API key authentication
+- No persistent storage of conversation data
+- In-memory session management
 
 ---
 
@@ -768,15 +760,24 @@ MIT License - See [LICENSE](LICENSE) for details
 
 *Protecting people from scams with the power of AI*
 
-### 🎨 Try the Interactive UI
-Experience the honeypot in action at our Streamlit deployment!
+### 🎨 Try It Yourself
 
-[**Launch Interactive Demo →**](https://your-streamlit-app-url)
+Clone the repo and run locally to experience the honeypot in action!
+
+```bash
+git clone https://github.com/SG2407/Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction.git
+cd Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction
+pip install -r requirements.txt
+cp .env.example .env  # Add your API keys
+uvicorn app.main:app --reload
+```
 
 ---
 
-**Tech Stack**: Python • FastAPI • Streamlit • Groq AI • SQLite • Render
+**AI Models**: Gemini 2.0 Flash (OpenRouter) • Llama 3.3 70B (Groq)
 
-**Features**: Scam Detection • AI Agent • Intelligence Extraction • Real-Time UI
+**Tech Stack**: Python 3.11+ • FastAPI • Pydantic V2 • httpx • Render
+
+**Features**: Hybrid Scam Detection • Multi-Persona AI Agent • 6-Type Intelligence Extraction • GUVI Compliant
 
 </div>
