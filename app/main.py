@@ -31,10 +31,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global state for session tracking
+# ============================================================================
+# GLOBAL STATE MANAGEMENT
+# ============================================================================
+# NOTE: Using in-memory storage for hackathon simplicity. For production:
+# - Use Redis for distributed sessions
+# - Use PostgreSQL/MongoDB for persistent storage
+# - Add lock mechanisms (threading.Lock) for thread safety
+# - Implement session expiration and cleanup
+# ============================================================================
 callback_sent_sessions: Set[str] = set()  # Sessions that received callback (session closed)
-last_message_time: Dict[str, datetime] = {}  # Track last message time for timeout
-message_counts: Dict[str, int] = {}  # Track actual messages exchanged per session
+last_message_time: Dict[str, datetime] = {}  # Track last message time for timeout detection
+message_counts: Dict[str, int] = {}  # Track total messages exchanged per session for limits
 last_agent_reply: Dict[str, str] = {}  # Cache last agent reply per session for fallback (PRIORITY 5)
 session_scam_types: Dict[str, str] = {}  # Track highest priority scam type per session (NEVER downgrades)
 MESSAGE_TIMEOUT_SECONDS = int(os.getenv("MESSAGE_TIMEOUT_SECONDS", "10"))

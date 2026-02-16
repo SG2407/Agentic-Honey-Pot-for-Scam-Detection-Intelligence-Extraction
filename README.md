@@ -180,32 +180,72 @@ Delhi_Hackathon/
 └── README.md                     # Documentation
 ```
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Comprehensive Setup Guide
 
 ### Prerequisites
-- Python 3.11
-- OpenRouter API Key ([openrouter.ai](https://openrouter.ai)) - Primary LLM provider
-- Groq API Key ([console.groq.com](https://console.groq.com)) - Fallback LLM provider
 
-### Installation
+**Required:**
+- **Python 3.11** (exact version for compatibility)
+  - Check: `python --version` should show `3.11.x`
+  - Install: [python.org/downloads](https://www.python.org/downloads/)
+- **OpenRouter API Key** (Primary LLM) - [openrouter.ai](https://openrouter.ai)
+  - Free tier available
+  - Used for: Conversation generation, summarization
+- **Groq API Key** (Fallback LLM) - [console.groq.com](https://console.groq.com)
+  - Free tier available
+  - Used for: Scam detection, pattern matching
+
+**Optional:**
+- **Docker & Docker Compose** (for containerized deployment)
+- **Git** (for version control)
+
+### Step-by-Step Installation
+
+#### 1. Clone Repository
 
 ```bash
-# Clone repository
 git clone https://github.com/SG2407/Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction.git
 cd Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction
+```
 
-# Create virtual environment
+#### 2. Create Virtual Environment
+
+**macOS/Linux:**
+```bash
+python3.11 -m venv venv
+source venv/bin/activate
+```
+
+**Windows:**
+```bash
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+venv\Scripts\activate
+```
 
-# Install dependencies
+**Verify activation:** Your prompt should show `(venv)` prefix
+
+#### 3. Install Dependencies
+
+```bash
+pip install --upgrade pip  # Ensure pip is up to date
 pip install -r requirements.txt
 ```
 
-### Configuration
+**Verify installation:**
+```bash
+python -c "import fastapi; print('FastAPI:', fastapi.__version__)"
+# Should print: FastAPI: 0.104.1
+```
 
-Copy `.env.example` to `.env` and configure:
+#### 4. Configure Environment Variables
 
+**Create `.env` file:**
+```bash
+cp .env.example .env
+nano .env  # or use your preferred editor
+```
+
+**Essential Configuration:**
 ```env
 # API Configuration
 API_KEY=team_recursives
@@ -235,8 +275,25 @@ ENVIRONMENT=development
 LOG_LEVEL=INFO
 ```
 
-### Run Locally
+#### 5. Validate API Keys
 
+**Test OpenRouter:**
+```bash
+curl https://openrouter.ai/api/v1/models \
+  -H "Authorization: Bearer YOUR_OPENROUTER_API_KEY"
+```
+Expected: JSON list of available models
+
+**Test Groq:**
+```bash
+curl https://api.groq.com/openai/v1/models \
+  -H "Authorization: Bearer YOUR_GROQ_API_KEY"
+```
+Expected: JSON list of Groq models
+
+#### 6. Run Application
+
+**Start FastAPI server:**
 ```bash
 # Start the honeypot API
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -244,6 +301,59 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 # Server available at http://localhost:8000
 # Health check: http://localhost:8000/health
 # API endpoint: http://localhost:8000/honeypot
+```
+
+**Expected startup logs:**
+```
+INFO:     Started server process [xxxxx]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+#### 7. Test the API
+
+**Health check:**
+```bash
+curl http://localhost:8000/health
+```
+Expected response: `{"status": "healthy"}`
+
+**Test honeypot endpoint:**
+```bash
+curl -X POST http://localhost:8000/honeypot \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: team_recursives" \
+  -d '{
+    "sessionId": "test-session-123",
+    "message": {
+      "sender": "scammer",
+      "text": "Your bank account has been blocked! Share your OTP immediately.",
+      "timestamp": 1708070400000
+    }
+  }'
+```
+
+**Expected response:**
+```json
+{
+  "status": "success",
+  "reply": "oh no really? which account? i have two accounts"
+}
+```
+
+#### 8. Verify Intelligence Extraction
+
+Check server logs for intelligence extraction:
+```
+✓ Scam detected: credential_phishing (confidence: 1.0)
+✓ Found suspicious pattern: 'share.*otp'
+📞 Phone numbers: []
+🏦 Bank accounts: []
+💳 UPI IDs: []
+🔗 Phishing links: []
+🎯 GUVI Score: 0/45 points (0%)
+ℹ️  Continuing engagement to gather more intelligence...
 ```
 
 ### Optional: Test with UI
@@ -517,28 +627,99 @@ Expected response:
 }
 ```
 
-## 🐛 Troubleshooting
+## 🐛 Comprehensive Troubleshooting Guide
+
+### Installation Issues
+
+**Python Version Mismatch**
+```bash
+# Check Python version
+python --version  # Must be 3.11.x
+
+# If wrong version, install Python 3.11:
+# macOS: brew install python@3.11
+# Ubuntu: sudo apt-get install python3.11
+# Windows: Download from python.org
+
+# Use specific version
+python3.11 -m venv venv
+```
+
+**Dependency Installation Fails**
+```bash
+# Update pip first
+pip install --upgrade pip setuptools wheel
+
+# Install with verbose output
+pip install -r requirements.txt -v
+
+# If specific package fails
+pip install pydantic==2.5.0 --force-reinstall
+```
 
 ### API Issues
 
 **401 Unauthorized**
 - Verify API key is set correctly: `team_recursives`
-- Check header format: `x-api-key: team_recursives`
+- Check header format: `x-api-key: team_recursives` (case-insensitive)
+- Alternative headers: `X-API-KEY`, `Authorization`
 
 **Validation Errors**
 - Ensure `sender` field is lowercase: `"scammer"` not `"Scammer"`
 - Timestamp must be valid ISO-8601 or Unix milliseconds
-- All required fields: `sessionId`, `message`, `message.sender`, `message.text`, `message.timestamp`
+- Required fields: `sessionId`, `message.sender`, `message.text`, `message.timestamp`
 
-**AI Provider Errors**
+**Empty Response**
+- Session already closed (callback sent) - use new sessionId
+- Check server logs for session status
+
+**LLM Provider Errors**
 ```bash
-# Verify OpenRouter API key
+# Verify OpenRouter (returns model list if OK)
 curl https://openrouter.ai/api/v1/models \
   -H "Authorization: Bearer $OPENROUTER_API_KEY"
 
-# Check Groq API key
-# Visit https://console.groq.com/keys
+# Verify Groq (returns model list if OK)
+curl https://api.groq.com/openai/v1/models \
+  -H "Authorization: Bearer $GROQ_API_KEY"
+
+# Get new keys:
+# OpenRouter: https://openrouter.ai/keys
+# Groq: https://console.groq.com/keys
 ```
+
+### Runtime Issues
+
+**Port Already in Use**
+```bash
+# macOS/Linux
+lsof -i :8000 && kill -9 <PID>
+
+# Windows
+netstat -ano | findstr :8000 && taskkill /PID <PID> /F
+
+# Or use different port
+uvicorn app.main:app --port 8001
+```
+
+**Module Import Errors**
+```bash
+# Ensure virtual environment is active
+which python  # Should show venv/bin/python
+
+# Reinstall
+pip install -r requirements.txt --force-reinstall
+```
+
+**Intelligence Not Extracting**
+- Scammer must explicitly share: phone, UPI, account, links
+- Check logs: `📊 Current extraction: Phone=0, Bank=0...`
+- Conversation needs 3-5 turns for natural extraction
+
+**Callback Not Sending**
+- Score must be ≥ 36/45 points (80%) OR 20 turns reached
+- Check: `🎯 GUVI Score: X/45 points`
+- Verify GUVI_CALLBACK_URL in .env
 
 **Render Deployment Issues**
 - Cold start may take 30-50 seconds on free tier

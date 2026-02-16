@@ -82,6 +82,42 @@ class ConversationAgent:
         
         return "\n".join(context_lines) + "\n\n" + emotion_state
     
+    def _identify_red_flags(self, scammer_message: str) -> str:
+        """
+        Identify red flags in scammer's message and provide probing strategies.
+        Critical for review requirement: red-flag identification and engagement.
+        """
+        msg_lower = scammer_message.lower()
+        red_flags = []
+        
+        # Red Flag 1: Urgency + Consequences
+        if any(word in msg_lower for word in ['urgent', 'immediately', 'expire', 'block', 'suspend', 'close']):
+            red_flags.append("🚩 URGENCY PRESSURE → Probe: 'why so urgent? cant this wait till tomorrow?'")
+        
+        # Red Flag 2: Credential Requests
+        if any(word in msg_lower for word in ['otp', 'password', 'pin', 'cvv', 'share', 'send']):
+            red_flags.append("🚩 CREDENTIAL REQUEST → Challenge: 'wait, bank never asks for otp... how i verify youre real?'")
+        
+        # Red Flag 3: Impersonation Claims
+        if any(word in msg_lower for word in ['bank', 'government', 'officer', 'official', 'police', 'court']):
+            red_flags.append("🚩 AUTHORITY CLAIM → Demand proof: 'whats your employee id?', 'give me official number to call back'")
+        
+        # Red Flag 4: Too Good to Be True Offers
+        if any(word in msg_lower for word in ['won', 'prize', 'lottery', 'free', 'cashback', 'reward']):
+            red_flags.append("🚩 UNREALISTIC OFFER → Question: 'how did i win? i dont remember entering', 'any fees to claim?'")
+        
+        # Red Flag 5: Payment Demands
+        if any(word in msg_lower for word in ['pay', 'transfer', 'deposit', 'send money', 'rs.', '₹']):
+            red_flags.append("🚩 PAYMENT DEMAND → Clarify: 'why i need to pay? this seems unusual', 'which account exactly?'")
+        
+        # Red Flag 6: Suspicious Links
+        if any(word in msg_lower for word in ['click', 'link', 'website', 'http', 'www']):
+            red_flags.append("🚩 SUSPICIOUS LINK → Express doubt: 'this link safe? showing security warning', 'what website is this?'")
+        
+        if red_flags:
+            return "🚨 RED FLAGS DETECTED - PROBE THESE:\n" + "\n".join(f"   {flag}" for flag in red_flags[:3])
+        return ""
+    
     def _build_strategic_questions(self, scammer_message: str, scam_type: str, turn_count: int) -> str:
         """
         Build context-aware strategic questioning guidance based on scammer's message.
@@ -222,6 +258,9 @@ class ConversationAgent:
         # Strategic question-asking tactics - context-aware intelligence extraction
         strategic_questioning = self._build_strategic_questions(scammer_message, scam_type, turn_count)
         
+        # Red-flag identification and probing (Critical for review)
+        red_flag_analysis = self._identify_red_flags(scammer_message)
+        
         # Passive elicitation tactics - rotate through conversation
         elicitation_tactics = [
             "Show CONFUSION requiring clarity: 'wait which number again?', 'i cant find that link', 'where exactly i should send?'",
@@ -306,6 +345,8 @@ Your goal is to engage and extract these 5 HIGH-VALUE intelligence types through
 
 🎯 STRATEGIC INTELLIGENCE EXTRACTION VIA NATURAL QUESTIONS:
 === CRITICAL STRATEGY: Ask questions that make scammers REVEAL their information ===
+
+{red_flag_analysis}
 
 {strategic_questioning}
 
