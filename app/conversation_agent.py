@@ -92,6 +92,8 @@ class ConversationAgent:
         2. Bank Accounts (10 pts)
         3. UPI IDs (10 pts)
         4. Phishing Links (10 pts)
+
+        Ask followup questions that will help in extracting the phone number , bank account , upi ids , phishing links
         """
         msg_lower = scammer_message.lower()
         suggestions = []
@@ -172,7 +174,8 @@ class ConversationAgent:
         """
         Generate natural, human-like reply to engage scammer
         PRIORITY 4: Uses metadata (channel, language, locale) for realism
-        NEVER explicitly asks for intel - coaxes it organically
+        NEVER explicitly asks for intel - coaxes it organically.
+        ASK QUESTIONS when necessary to get info such as ohone number , account number , upi id , links
         """
         persona_key = self._select_persona(scam_type)
         persona = self.PERSONAS[persona_key]
@@ -237,7 +240,7 @@ Behavioral traits: {', '.join(persona_behavioral) if persona_behavioral else 'ad
 {style_hints}
 
 🎯 === PRIMARY MISSION: EXTRACT 4 CRITICAL DATA TYPES === 🎯
-Your goal is to naturally extract these 4 HIGH-VALUE intelligence types through conversation:
+Your goal is to enagage and extract these 4 HIGH-VALUE intelligence types through conversation:
 
 1. 📞 PHONE NUMBERS (10 points)
    - Callback numbers, contact numbers, WhatsApp numbers
