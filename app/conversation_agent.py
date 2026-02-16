@@ -108,17 +108,25 @@ class ConversationAgent:
         # PRIORITY 1: Identify missing critical data types and prompt for them
         missing_high_value = []
         if not has_phone:
-            missing_high_value.append("📞 PHONE NUMBER (10pts) - Ask: 'what number to call you back?', 'can you give callback number?'")
+            missing_high_value.append("📞 PHONE NUMBER (10pts) - URGENT: Ask 'what number to call you back?', 'your contact number?'")
         if not has_bank:
-            missing_high_value.append("🏦 BANK ACCOUNT (10pts) - Ask: 'which account details?', 'where to deposit?', 'account number again?'")
+            missing_high_value.append("🏦 BANK ACCOUNT (10pts) - Ask: 'which account details?', 'where to deposit?', 'account number?'")
         if not has_upi:
             missing_high_value.append("💳 UPI ID (10pts) - Ask: 'what upi id to send?', 'paytm/phonepe/gpay id?', 'payment address?'")
         if not has_link:
-            missing_high_value.append("🔗 PHISHING LINK (10pts) - Express: 'send link again', 'what website?', 'link not working'")
+            missing_high_value.append("🔗 PHISHING LINK (10pts) - Express: 'send link again', 'what website?', 'link not showing properly'")
+        if not has_email:
+            missing_high_value.append("📧 EMAIL ADDRESS (5pts) - Ask: 'what email id?', 'official email?', 'support email address?'")
+        
+        # AGGRESSIVE EARLY QUESTIONING (turns 2-4)
+        if turn_count == 2 and not has_phone:
+            suggestions.append("⚡ TURN 2 - CRITICAL: Ask for contact number NOW! Say: 'btw what number can i call you back on?'")
+        elif turn_count == 3 and (not has_phone and not has_email):
+            suggestions.append("⚡ TURN 3 - URGENT: No contact details yet! Ask: 'how do i reach you if call drops? your number/email?'")
         
         if missing_high_value and turn_count >= 2:
             suggestions.append("🎯 PRIORITY TARGETS (High-Value Intelligence Missing):")
-            suggestions.extend(f"   {item}" for item in missing_high_value[:2])  # Focus on top 2
+            suggestions.extend(f"   {item}" for item in missing_high_value[:3])  # Focus on top 3
         
         # Detect context and provide questioning strategies
         # Check if scammer claims official identity
@@ -136,7 +144,10 @@ class ConversationAgent:
         # Check if scammer mentions links
         link_keywords = ['link', 'website', 'click', 'url', 'http', 'www', '.com', 'portal', 'form']
         if any(keyword in msg_lower for keyword in link_keywords):
-            suggestions.append("🔗 Link mentioned → Request: 'link not working send again', 'what exact website?'")
+            if has_link:
+                suggestions.append("🔗 Link provided → If not clear, say: 'link not opening properly', 'send again pls'")
+            else:
+                suggestions.append("🔗 Link mentioned but NOT provided → URGENT: 'what link?', 'send me that website', 'i dont see any link'")
         
         # Check if scammer wants OTP/credentials
         credential_keywords = ['otp', 'password', 'pin', 'cvv', 'card number', 'aadhar', 'pan', 
@@ -239,30 +250,40 @@ Behavioral traits: {', '.join(persona_behavioral) if persona_behavioral else 'ad
 
 {style_hints}
 
-🎯 === PRIMARY MISSION: EXTRACT 4 CRITICAL DATA TYPES === 🎯
-Your goal is to enagage and extract these 4 HIGH-VALUE intelligence types through conversation:
+🎯 === PRIMARY MISSION: EXTRACT 5 CRITICAL DATA TYPES === 🎯
+Your goal is to engage and extract these 5 HIGH-VALUE intelligence types through conversation:
 
-1. 📞 PHONE NUMBERS (10 points)
+1. 📞 PHONE NUMBERS (10 points) - HIGHEST PRIORITY
    - Callback numbers, contact numbers, WhatsApp numbers
-   - Ask: "what number to call you back?", "can you send your contact?"
+   - Ask EARLY (turn 2-3): "what number to call you back?", "can you send your contact?"
+   - Natural prompt: "wait let me save your number in case call drops"
 
-2. 🏦 BANK ACCOUNT NUMBERS (10 points)
+2. 🏦 BANK ACCOUNT NUMBERS (10 points) - CRITICAL
    - Account numbers where to send money, beneficiary accounts
    - Ask: "which account number?", "where to deposit?", "confirm account again?"
+   - For payments: "im ready to send, just tell me exact account or upi"
 
-3. 💳 UPI IDs (10 points)
+3. 💳 UPI IDs (10 points) - CRITICAL
    - PayTM/PhonePe/GPay/UPI addresses (format: something@paytm)
    - Ask: "what upi id?", "phonepe address?", "where to send payment?"
+   - Natural: "i prefer upi, easier for me... your id?"
 
-4. 🔗 PHISHING LINKS (10 points)
+4. 🔗 PHISHING LINKS (10 points) - IMPORTANT
    - Suspicious websites, verification portals, fake banking sites
-   - Express: "link not opening", "send website again", "what url?"
+   - If mentioned but not clear: "link not opening", "send website again", "what exact url?"
+   - If not provided: "should i go to website? which one?", "send me link"
 
-⚡ EXTRACTION STRATEGY:
+5. 📧 EMAIL ADDRESSES (5 points) - BONUS
+   - Official emails, support contacts
+   - Ask: "what email id?", "which department email?", "where to send documents?"
+
+⚡ EXTRACTION STRATEGY (BE AGGRESSIVE IN TURNS 2-4):
+• Turn 2-3: ALWAYS ask for contact details - "what number/email can i reach you?"
 • If they mention payment: Immediately ask "where to send? what account/upi?"
 • If they claim official: Ask "what number to call back?", "which department email?"
-• If they share link: Say "link broken, send again?" or "what website name?"
-• If NO contact info yet: Be willing to help BUT need their "contact details to verify"
+• If they mention link/website: If not visible, say "link not showing, send again?"
+• If they want you to click somewhere: "what exact website address? want to verify first"
+• If NO contact info by turn 3: Express concern - "how do i contact you later if issue?"
 
 💡 REMEMBER: Extract naturally through confusion, obstacles, and verification needs!
 

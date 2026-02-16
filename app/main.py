@@ -501,8 +501,8 @@ async def process_message_background(
         
         # GUVI Hackathon callback conditions:
         # 1. Scam must be detected
-        # 2. EITHER intelligence score >= 80% (32+ points out of 40) OR message limit reached
-        guvi_score_threshold = 32  # 80% of 40 points
+        # 2. EITHER intelligence score >= 80% (36+ points out of 45) OR message limit reached
+        guvi_score_threshold = 36  # 80% of 45 points
         intel_threshold_met = guvi_score >= guvi_score_threshold
         
         # Get max conversation turns from environment (default 20)
@@ -519,13 +519,14 @@ async def process_message_background(
             if session_id not in callback_sent_sessions:
                 logger.info(f"🎯 Callback conditions met for session {session_id}:")
                 logger.info(f"   ✓ Scam detected: {detection_result.scam_type} (confidence: {detection_result.confidence})")
-                logger.info(f"   ✓ GUVI Score: {guvi_score}/40 points ({guvi_score*2.5:.0f}%) (threshold: {guvi_score_threshold})")
+                logger.info(f"   ✓ GUVI Score: {guvi_score}/45 points ({(guvi_score/45)*100:.0f}%) (threshold: {guvi_score_threshold})")
                 logger.info(f"   ✓ Total messages: {total_msgs} (limit: {max_turns})")
                 logger.info(f"   ✓ Callback trigger: {'Intelligence threshold met (80%+)' if intel_threshold_met else 'Message limit reached'}")
                 logger.info(f"   📞 Phone numbers: {len(intelligence.phoneNumbers)}")
                 logger.info(f"   🏦 Bank accounts: {len(intelligence.bankAccounts)}")
                 logger.info(f"   💳 UPI IDs: {len(intelligence.upiIds)}")
                 logger.info(f"   🔗 Phishing links: {len(intelligence.phishingLinks)}")
+                logger.info(f"   📧 Email addresses: {len(intelligence.emailAddresses)}")
                 
                 callback_sent_sessions.add(session_id)
                 
@@ -561,13 +562,13 @@ async def process_message_background(
         else:
             logger.info(f"⏸️  Callback NOT sent for session {session_id}:")
             logger.info(f"   - Scam detected: {detection_result.is_scam}")
-            logger.info(f"   - GUVI Score: {guvi_score}/40 points ({guvi_score*2.5:.0f}%) (threshold: {guvi_score_threshold} points)")
+            logger.info(f"   - GUVI Score: {guvi_score}/45 points ({(guvi_score/45)*100:.0f}%) (threshold: {guvi_score_threshold} points)")
             logger.info(f"   - Total messages: {total_msgs} (limit: {max_turns})")
             logger.info(f"   - Intelligence threshold met: {intel_threshold_met}")
             logger.info(f"   - Message limit reached: {message_limit_reached}")
             if detection_result.is_scam:
                 logger.info(f"   ℹ️  Continuing engagement to gather more intelligence...")
-                logger.info(f"   📊 Current extraction: Phone={len(intelligence.phoneNumbers)}, Bank={len(intelligence.bankAccounts)}, UPI={len(intelligence.upiIds)}, Links={len(intelligence.phishingLinks)}")
+                logger.info(f"   📊 Current extraction: Phone={len(intelligence.phoneNumbers)}, Bank={len(intelligence.bankAccounts)}, UPI={len(intelligence.upiIds)}, Links={len(intelligence.phishingLinks)}, Email={len(intelligence.emailAddresses)}")
         
     except Exception as e:
         logger.error(f"Background error: {session_id}")

@@ -56,6 +56,32 @@ Automatically extracts and tracks from entire conversation history:
 - **Session Tracking**: Prevents duplicate callbacks for closed sessions
 - **Conversation Limits**: Configurable max turns per conversation (default: 20 turns)
 
+### 🎯 **GUVI Scoring System** (45-Point Intelligence Scoring)
+**Dual Callback Trigger**: Sends callback when **EITHER** condition is met:
+1. ✅ **Intelligence Score ≥ 80%** (36+ points out of 45) - High-value data extracted
+2. ✅ **Message Limit Reached** (20 turns default) - Maximum conversation length
+
+**Scoring Breakdown** (45 points maximum):
+- 📞 **Phone Numbers**: 10 points (highest priority - contact tracing)
+- 🏦 **Bank Account Numbers**: 10 points (financial fraud evidence)
+- 💳 **UPI IDs**: 10 points (payment fraud tracking)
+- 🔗 **Phishing Links**: 10 points (malicious infrastructure)
+- 📧 **Email Addresses**: 5 points (secondary contact method)
+
+**Strategic Extraction Features**:
+- ⚡ **Early-turn questioning** (turns 2-4): Aggressively asks for contact details
+- 🎭 **Context-aware prompts**: AI explicitly guided to extract 5 intelligence types
+- 🔄 **Link re-request strategies**: Asks scammer to resend unclear/broken links
+- 🧠 **Adaptive questioning**: Identifies missing high-value data and prompts accordingly
+
+**Example Score Calculation**:
+```
+Scenario: Bank fraud scam
+Extracted: +91-9876543210 (phone), 1234567890123456 (bank), scammer@upi (UPI)
+Score: 10 + 10 + 10 = 30/45 points (67%)
+Result: Below 80% threshold → Continues conversation to extract more
+```
+
 ### 🛡️ **Robust Input Handling**
 - ✅ Flexible timestamp parsing (Unix milliseconds, ISO-8601, numeric strings)
 - ✅ Optional fields (conversationHistory, metadata)

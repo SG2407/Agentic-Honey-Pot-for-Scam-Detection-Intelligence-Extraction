@@ -286,16 +286,17 @@ class IntelligenceExtractor:
     
     def calculate_guvi_score(self, intelligence: ExtractedIntelligence) -> int:
         """
-        Calculate GUVI hackathon scoring (40 points max for intelligence extraction)
+        Calculate GUVI hackathon scoring (45 points max for intelligence extraction)
         
         Scoring breakdown:
         - Phone Numbers: 10 pts (if any extracted)
         - Bank Accounts: 10 pts (if any extracted)
         - UPI IDs: 10 pts (if any extracted)
         - Phishing Links: 10 pts (if any extracted)
+        - Email Addresses: 5 pts (if any extracted)
         
         Returns:
-            int: Total score (0-40 points)
+            int: Total score (0-45 points)
         """
         score = 0
         
@@ -315,5 +316,10 @@ class IntelligenceExtractor:
             score += 10
             logger.info(f"🔗 +10 pts: Phishing links extracted ({len(intelligence.phishingLinks)})")
         
-        logger.info(f"🎯 Total Intelligence Score: {score}/40 points ({score*2.5:.0f}%)")
+        if intelligence.emailAddresses:
+            score += 5
+            logger.info(f"📧 +5 pts: Email addresses extracted ({len(intelligence.emailAddresses)})")
+        
+        percentage = (score / 45) * 100
+        logger.info(f"🎯 Total Intelligence Score: {score}/45 points ({percentage:.0f}%)")
         return score
