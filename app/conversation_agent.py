@@ -1,6 +1,7 @@
 """AI conversation agent for natural scammer engagement"""
 
 import os
+import re
 from typing import List
 from app.models import Message
 from app.llm_provider import LLMManager  # PRIORITY 2: Abstract LLM provider
@@ -81,6 +82,86 @@ class ConversationAgent:
         
         return "\n".join(context_lines) + "\n\n" + emotion_state
     
+    def _build_strategic_questions(self, scammer_message: str, scam_type: str, turn_count: int) -> str:
+        """
+        Build context-aware strategic questioning guidance based on scammer's message.
+        Analyzes what information is present/missing and suggests appropriate questions.
+        
+        PRIORITY: Extract 4 CRITICAL data types for maximum scoring (40 points total):
+        1. Phone Numbers (10 pts)
+        2. Bank Accounts (10 pts)
+        3. UPI IDs (10 pts)
+        4. Phishing Links (10 pts)
+        """
+        msg_lower = scammer_message.lower()
+        suggestions = []
+        
+        # Check what critical intelligence is already present
+        has_phone = bool(re.search(r'\+?\d[\d\s-]{8,}', scammer_message))
+        has_email = bool(re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', scammer_message))
+        has_upi = bool(re.search(r'[\w\.-]+@[\w\.-]+', msg_lower) and any(upi_provider in msg_lower for upi_provider in ['paytm', 'phonepe', 'gpay', 'upi', 'bhim']))
+        has_bank = bool(re.search(r'\b\d{9,18}\b', scammer_message))
+        has_link = bool(re.search(r'https?://[^\s]+', scammer_message))
+        
+        # PRIORITY 1: Identify missing critical data types and prompt for them
+        missing_high_value = []
+        if not has_phone:
+            missing_high_value.append("📞 PHONE NUMBER (10pts) - Ask: 'what number to call you back?', 'can you give callback number?'")
+        if not has_bank:
+            missing_high_value.append("🏦 BANK ACCOUNT (10pts) - Ask: 'which account details?', 'where to deposit?', 'account number again?'")
+        if not has_upi:
+            missing_high_value.append("💳 UPI ID (10pts) - Ask: 'what upi id to send?', 'paytm/phonepe/gpay id?', 'payment address?'")
+        if not has_link:
+            missing_high_value.append("🔗 PHISHING LINK (10pts) - Express: 'send link again', 'what website?', 'link not working'")
+        
+        if missing_high_value and turn_count >= 2:
+            suggestions.append("🎯 PRIORITY TARGETS (High-Value Intelligence Missing):")
+            suggestions.extend(f"   {item}" for item in missing_high_value[:2])  # Focus on top 2
+        
+        # Detect context and provide questioning strategies
+        # Check if scammer claims official identity
+        official_keywords = ['bank', 'officer', 'department', 'official', 'government', 'ministry', 
+                           'police', 'court', 'tax', 'customs', 'company', 'representative']
+        if any(keyword in msg_lower for keyword in official_keywords):
+            suggestions.append("⚠️ Official claim detected → Ask for: employee ID, callback phone, official email")
+        
+        # Check if scammer asks for payment
+        payment_keywords = ['pay', 'send money', 'transfer', 'payment', 'deposit', 'fund', 'amount', 
+                          'rs.', 'rupees', '₹', 'fee', 'charge', 'penalty']
+        if any(keyword in msg_lower for keyword in payment_keywords):
+            suggestions.append("💰 Payment request → Ask: 'which account/UPI to send?', 'confirm payment details?'")
+        
+        # Check if scammer mentions links
+        link_keywords = ['link', 'website', 'click', 'url', 'http', 'www', '.com', 'portal', 'form']
+        if any(keyword in msg_lower for keyword in link_keywords):
+            suggestions.append("🔗 Link mentioned → Request: 'link not working send again', 'what exact website?'")
+        
+        # Check if scammer wants OTP/credentials
+        credential_keywords = ['otp', 'password', 'pin', 'cvv', 'card number', 'aadhar', 'pan', 
+                             'verify', 'authenticate', 'code', 'security']
+        if any(keyword in msg_lower for keyword in credential_keywords):
+            suggestions.append("🔐 Sensitive data request → Show concern: 'why you need this?', 'how to verify you?'")
+        
+        # Check for urgency tactics
+        urgency_keywords = ['urgent', 'immediately', 'now', 'quickly', 'hurry', 'limited time', 
+                          'expire', 'last chance', 'within', 'minutes', 'today only', 'suspended']
+        if any(keyword in msg_lower for keyword in urgency_keywords):
+            suggestions.append("⏰ Urgency tactics → Question: 'why so urgent?', 'what if i wait?'")
+        
+        # Check for prize/reward scams
+        prize_keywords = ['won', 'winner', 'prize', 'lottery', 'reward', 'congratulations', 
+                        'selected', 'lucky', 'gift', 'jackpot']
+        if any(keyword in msg_lower for keyword in prize_keywords):
+            suggestions.append("🎁 Prize offer → Ask: 'how did i win?', 'where to collect?', 'any fees?'")
+        
+        # Build the strategic guidance string
+        if suggestions:
+            guidance = "🎯 INTELLIGENCE EXTRACTION PRIORITIES (Maximize 40-point scoring):\n" + "\n".join(f"   {s}" for s in suggestions[:5])  # Limit to 5 most relevant
+            guidance += "\n\n💡 Focus on extracting MISSING high-value data! Ask 1-2 natural questions (<40 words)."
+            return guidance
+        else:
+            return "📝 General engagement. Use confusion/verification tactics to extract phone/UPI/bank/links."
+    
     def generate_reply(
         self, 
         scammer_message: str, 
@@ -124,6 +205,9 @@ class ConversationAgent:
         elif locale and 'IN' in str(locale).upper():
             style_hints = "Use Indian context: mention INR, local payment methods (Paytm, PhonePe, GPay)."
         
+        # Strategic question-asking tactics - context-aware intelligence extraction
+        strategic_questioning = self._build_strategic_questions(scammer_message, scam_type, turn_count)
+        
         # Passive elicitation tactics - rotate through conversation
         elicitation_tactics = [
             "Show CONFUSION requiring clarity: 'wait which number again?', 'i cant find that link', 'where exactly i should send?'",
@@ -152,6 +236,33 @@ Behavioral traits: {', '.join(persona_behavioral) if persona_behavioral else 'ad
 
 {style_hints}
 
+🎯 === PRIMARY MISSION: EXTRACT 4 CRITICAL DATA TYPES === 🎯
+Your goal is to naturally extract these 4 HIGH-VALUE intelligence types through conversation:
+
+1. 📞 PHONE NUMBERS (10 points)
+   - Callback numbers, contact numbers, WhatsApp numbers
+   - Ask: "what number to call you back?", "can you send your contact?"
+
+2. 🏦 BANK ACCOUNT NUMBERS (10 points)
+   - Account numbers where to send money, beneficiary accounts
+   - Ask: "which account number?", "where to deposit?", "confirm account again?"
+
+3. 💳 UPI IDs (10 points)
+   - PayTM/PhonePe/GPay/UPI addresses (format: something@paytm)
+   - Ask: "what upi id?", "phonepe address?", "where to send payment?"
+
+4. 🔗 PHISHING LINKS (10 points)
+   - Suspicious websites, verification portals, fake banking sites
+   - Express: "link not opening", "send website again", "what url?"
+
+⚡ EXTRACTION STRATEGY:
+• If they mention payment: Immediately ask "where to send? what account/upi?"
+• If they claim official: Ask "what number to call back?", "which department email?"
+• If they share link: Say "link broken, send again?" or "what website name?"
+• If NO contact info yet: Be willing to help BUT need their "contact details to verify"
+
+💡 REMEMBER: Extract naturally through confusion, obstacles, and verification needs!
+
 === ADVANCED RESPONSE GUIDELINES ===
 
 📱 REALISM & AUTHENTICITY:
@@ -168,6 +279,73 @@ Behavioral traits: {', '.join(persona_behavioral) if persona_behavioral else 'ad
   Example: "Ok I understand... I have SBI savings account, is that the one you mean?"
 • Deep stage (turns 7+): Building trust, considering compliance, still with minor hesitation
   Example: "Alright... if this will fix issue then I can do it. Should I transfer from my account ending 4521?"
+
+🎯 STRATEGIC INTELLIGENCE EXTRACTION VIA NATURAL QUESTIONS:
+=== CRITICAL STRATEGY: Ask questions that make scammers REVEAL their information ===
+
+{strategic_questioning}
+
+When scammer mentions something VAGUE or makes demands, respond with natural questions:
+
+✅ SMART QUESTIONING PATTERNS (Context-aware, NOT hardcoded):
+
+1️⃣ WHEN SCAMMER CLAIMS TO BE AN OFFICIAL:
+   • "ok i want to verify first... whats your employee id or badge number?"
+   • "can you give me official phone number i can call back to confirm?"
+   • "which branch you calling from? i will check with them directly"
+   • "what email address from your department? i will send documents there"
+   
+2️⃣ WHEN SCAMMER ASKS FOR PAYMENT:
+   • "where exactly should i send? what account number or upi id?"
+   • "you want me to transfer to which number? pls send again i want to save correctly"
+   • "im ready to pay but confused... phonepe paytm or bank transfer which one?"
+   • "should i pay to your number or some other account? tell me clearly"
+
+3️⃣ WHEN SCAMMER MENTIONS PROBLEM/THREAT:
+   • "how did this happen? when did you try to contact me before?"
+   • "im worried now... can you send sms or email from official account so i have proof?"
+   • "what phone number shows on your system for me? just to verify"
+   • "which of my accounts is affected? i have multiple ones"
+
+4️⃣ WHEN SCAMMER SENDS LINK/WANTS YOU TO CLICK:
+   • "this link safe? whats the website name i can check first"
+   • "it shows some warning... is this real bank website or something else?"
+   • "link not opening... can you send different one or tell me website directly?"
+   • "my phone says suspicious... what exactly this link for?"
+
+5️⃣ WHEN SCAMMER ASKS FOR OTP/PASSWORD/SENSITIVE DATA:
+   • "wait why you need otp? bank never asks for this... are you sure?"
+   • "before sharing this let me confirm... what position you hold in company?"
+   • "how do i know you really from bank? can you prove somehow?"
+   • "im confused... should i call helpline number on my card to verify first?"
+
+6️⃣ WHEN SCAMMER WANTS QUICK ACTION:
+   • "why so urgent? this cant wait till tomorrow when i can visit branch?"
+   • "im scared to hurry... can you tell me what happens if i wait 1 hour?"
+   • "let me just confirm with my family... can you call back in 10 minutes?"
+   • "ok ok calm down... help me understand step by step what exactly i should do"
+
+7️⃣ WHEN SCAMMER OFFERS PRIZE/REWARD:
+   • "how did i win? i dont remember entering any contest... which one was it?"
+   • "where should i come to collect? what address and what time?"
+   • "any fees or charges? tell me honestly how much i need to pay first"
+   • "who do i contact for this? give me official phone or email"
+
+⚡ NATURAL QUESTION INTEGRATION RULES:
+• Ask questions that PROBE for missing details (numbers, names, accounts, links)
+• Frame questions from YOUR character's confusion/concern (not interrogation style)
+• Ask 1-2 questions per message when natural, but keep OVERALL response SHORT (15-40 words)
+• Mix questions with emotional statements: "im worried... what number i should call?"
+• Vary question types: verification, contact, process, timing questions
+• When they give partial info, express confusion and ask for complete details
+• Use questions to create opportunities for them to share more
+
+💡 QUESTION-ASKING PRIORITY (Use when scammer is VAGUE):
+→ They claim to be official but no contact = Ask for their phone/email/ID
+→ They want payment but no account given = Ask where to send (UPI/account)
+→ They share link but unclear = Ask what website or resend request
+→ They mention problem but vague = Ask for specifics to "verify"
+→ They rush you = Ask why urgent and what happens if you wait
 
 🎯 PASSIVE INTELLIGENCE ELICITATION (KEY: Make scammer VOLUNTEER information):
 CRITICAL: NEVER explicitly ask for scammer's details. Instead, create situations where THEY offer it:

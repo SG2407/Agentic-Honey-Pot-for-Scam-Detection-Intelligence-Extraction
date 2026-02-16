@@ -485,6 +485,9 @@ async def process_message_background(
             )
             has_intel = intelligence_extractor.has_real_intelligence(intelligence)
             intel_quality = intelligence_extractor.calculate_intelligence_quality(intelligence)
+            
+            # Calculate GUVI hackathon scoring (40 points max)
+            guvi_score = intelligence_extractor.calculate_guvi_score(intelligence)
         except asyncio.TimeoutError:
             logger.error(f"Extraction timeout: {session_id}")
             return
@@ -496,11 +499,15 @@ async def process_message_background(
         scammer_msg_count = message_counts.get(session_id, 1)
         total_msgs = scammer_msg_count * 2  # Each scammer message gets 1 honeypot response
         
-        # Enhanced callback conditions for proper engagement:
+        # GUVI Hackathon callback conditions:
         # 1. Scam must be detected
-        # 2. EITHER intelligence quality > 50% OR message limit (15) reached
-        intel_threshold_met = intel_quality >= 0.5  # At least 50% of critical fields populated
-        message_limit_reached = total_msgs >= 15  # Engagement limit reached
+        # 2. EITHER intelligence score >= 80% (32+ points out of 40) OR message limit reached
+        guvi_score_threshold = 32  # 80% of 40 points
+        intel_threshold_met = guvi_score >= guvi_score_threshold
+        
+        # Get max conversation turns from environment (default 20)
+        max_turns = int(os.getenv("MAX_CONVERSATION_TURNS", "20"))
+        message_limit_reached = total_msgs >= max_turns
         
         should_send_callback = (
             detection_result.is_scam and 
@@ -512,13 +519,13 @@ async def process_message_background(
             if session_id not in callback_sent_sessions:
                 logger.info(f"🎯 Callback conditions met for session {session_id}:")
                 logger.info(f"   ✓ Scam detected: {detection_result.scam_type} (confidence: {detection_result.confidence})")
-                logger.info(f"   ✓ Intelligence quality: {intel_quality*100:.1f}% (threshold: 50%)")
-                logger.info(f"   ✓ Total messages: {total_msgs} (limit: 15)")
-                logger.info(f"   ✓ Callback trigger: {'Intelligence threshold met' if intel_threshold_met else 'Message limit reached'}")
-                logger.info(f"   ✓ Bank accounts: {len(intelligence.bankAccounts)}")
-                logger.info(f"   ✓ UPI IDs: {len(intelligence.upiIds)}")
-                logger.info(f"   ✓ Phone numbers: {len(intelligence.phoneNumbers)}")
-                logger.info(f"   ✓ Phishing links: {len(intelligence.phishingLinks)}")
+                logger.info(f"   ✓ GUVI Score: {guvi_score}/40 points ({guvi_score*2.5:.0f}%) (threshold: {guvi_score_threshold})")
+                logger.info(f"   ✓ Total messages: {total_msgs} (limit: {max_turns})")
+                logger.info(f"   ✓ Callback trigger: {'Intelligence threshold met (80%+)' if intel_threshold_met else 'Message limit reached'}")
+                logger.info(f"   📞 Phone numbers: {len(intelligence.phoneNumbers)}")
+                logger.info(f"   🏦 Bank accounts: {len(intelligence.bankAccounts)}")
+                logger.info(f"   💳 UPI IDs: {len(intelligence.upiIds)}")
+                logger.info(f"   🔗 Phishing links: {len(intelligence.phishingLinks)}")
                 
                 callback_sent_sessions.add(session_id)
                 
@@ -554,12 +561,13 @@ async def process_message_background(
         else:
             logger.info(f"⏸️  Callback NOT sent for session {session_id}:")
             logger.info(f"   - Scam detected: {detection_result.is_scam}")
-            logger.info(f"   - Intelligence quality: {intel_quality*100:.1f}% (threshold: 50%)")
-            logger.info(f"   - Total messages: {total_msgs} (limit: 15)")
+            logger.info(f"   - GUVI Score: {guvi_score}/40 points ({guvi_score*2.5:.0f}%) (threshold: {guvi_score_threshold} points)")
+            logger.info(f"   - Total messages: {total_msgs} (limit: {max_turns})")
             logger.info(f"   - Intelligence threshold met: {intel_threshold_met}")
             logger.info(f"   - Message limit reached: {message_limit_reached}")
             if detection_result.is_scam:
                 logger.info(f"   ℹ️  Continuing engagement to gather more intelligence...")
+                logger.info(f"   📊 Current extraction: Phone={len(intelligence.phoneNumbers)}, Bank={len(intelligence.bankAccounts)}, UPI={len(intelligence.upiIds)}, Links={len(intelligence.phishingLinks)}")
         
     except Exception as e:
         logger.error(f"Background error: {session_id}")
