@@ -161,20 +161,14 @@ class ExtractedIntelligence(BaseModel):
     suspiciousKeywords: List[str] = Field(default_factory=list)
 
 
-class EngagementMetrics(BaseModel):
-    """Engagement metrics for conversation quality scoring"""
-    totalMessagesExchanged: int = Field(..., description="Total messages: scammer + honeypot")
-    engagementDurationSeconds: int = Field(..., description="Duration of engagement in seconds")
-
-
 class CallbackPayload(BaseModel):
     """Final result payload sent to GUVI callback endpoint"""
-    # VERSION CHECK: This model was updated at 2026-02-20 with engagementMetrics field
+    # VERSION CHECK: This model was updated at 2026-02-06 with sessionId field
     model_config = ConfigDict(extra='forbid', populate_by_name=True)  # Strict: only defined fields
     
     sessionId: str = Field(..., description="Session ID from GUVI platform")
     scamDetected: bool = Field(..., description="Whether scam was detected")
-    engagementMetrics: EngagementMetrics = Field(..., description="Engagement duration and message count")
+    totalMessagesExchanged: int = Field(..., description="Total messages: scammer + honeypot")
     extractedIntelligence: ExtractedIntelligence = Field(..., description="Extracted intelligence")
     agentNotes: str = Field(..., description="Description of scammer behavior and tactics")
 
