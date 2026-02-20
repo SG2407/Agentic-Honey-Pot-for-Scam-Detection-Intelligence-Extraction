@@ -245,21 +245,33 @@ class ConversationAgent:
         official_keywords = ['bank', 'officer', 'department', 'official', 'government', 'ministry', 
                            'police', 'court', 'tax', 'customs', 'company', 'representative']
         if any(keyword in msg_lower for keyword in official_keywords):
-            suggestions.append("⚠️ Official claim detected → Ask for: employee ID, callback phone, official email")
+            if not has_email:
+                suggestions.append("⚠️ Official claim WITHOUT EMAIL → ⚠️ URGENT: Ask 'whats your official email id?' or 'send confirmation email'")
+            if not has_phone:
+                suggestions.append("⚠️ Official claim WITHOUT PHONE → Ask for: employee ID, callback phone number")
+
         
         # Check if scammer asks for payment
         payment_keywords = ['pay', 'send money', 'transfer', 'payment', 'deposit', 'fund', 'amount', 
-                          'rs.', 'rupees', '₹', 'fee', 'charge', 'penalty']
+                          'rs.', 'rupees', '₹', 'fee', 'charge', 'penalty', 'send', 'otp']
         if any(keyword in msg_lower for keyword in payment_keywords):
-            suggestions.append("💰 Payment request → Ask: 'which account/UPI to send?', 'confirm payment details?'")
+            if not has_upi:
+                suggestions.append("💰💰 PAYMENT REQUEST WITHOUT UPI → ⚠️ MANDATORY: Ask 'your upi id kya hai? phonepe paytm gpay?'")
+            if not has_bank and not has_upi:
+                suggestions.append("💰 Payment request but NO payment details → Ask: 'where to send? account or upi?'")
+            elif has_bank and not has_upi:
+                suggestions.append("💰 Has account but NO UPI → Get UPI too: 'upi id bhi do... phonepe easier for me'")
+            if not has_email:
+                suggestions.append("📧 Payment context → Also ask: 'email id do for confirmation receipt'")
+
         
         # Check if scammer mentions links
-        link_keywords = ['link', 'website', 'click', 'url', 'http', 'www', '.com', 'portal', 'form']
+        link_keywords = ['link', 'website', 'click', 'url', 'http', 'www', '.com', 'portal', 'form', 'site']
         if any(keyword in msg_lower for keyword in link_keywords):
             if has_link:
                 suggestions.append("🔗 Link provided → If not clear, say: 'link not opening properly', 'send again pls'")
             else:
-                suggestions.append("🔗 Link mentioned but NOT provided → URGENT: 'what link?', 'send me that website', 'i dont see any link'")
+                suggestions.append("🔗🔗 Website/link MENTIONED but NOT PROVIDED → ⚠️ ASK: 'which website? send me link', 'link dikhao pls'")
         
         # Check if scammer wants OTP/credentials
         credential_keywords = ['otp', 'password', 'pin', 'cvv', 'card number', 'aadhar', 'pan', 
@@ -384,27 +396,40 @@ Your goal is to engage and extract these 5 HIGH-VALUE intelligence types through
    - Ask: "which account number?", "where to deposit?", "confirm account again?"
    - For payments: "im ready to send, just tell me exact account or upi"
 
-3. 💳 UPI IDs (10 points) - CRITICAL
+3. 💳 UPI IDs (10 points) - ⚠️ EXTREMELY CRITICAL - ASK AGGRESSIVELY ⚠️
    - PayTM/PhonePe/GPay/UPI addresses (format: something@paytm)
-   - Ask: "what upi id?", "phonepe address?", "where to send payment?"
-   - Natural: "i prefer upi, easier for me... your id?"
+   - ⚡ TURN 3-4: If payment mentioned but NO UPI given → YOU MUST ASK: "your upi id kya hai?"
+   - Ask: "phonepe id?", "paytm number?", "gpay address?", "upi id batao i will send now"
+   - Natural: "i prefer upi, easier for me... your id?", "phonepe use karte ho?"
+   - If they give account but not UPI: "account theek hai but upi bhi do... faster payment"
 
-4. 🔗 PHISHING LINKS (10 points) - IMPORTANT
+4. 🔗 PHISHING LINKS (10 points) - ⚠️ PROBE IF WEBSITE MENTIONED ⚠️
    - Suspicious websites, verification portals, fake banking sites
    - If mentioned but not clear: "link not opening", "send website again", "what exact url?"
-   - If not provided: "should i go to website? which one?", "send me link"
+   - If website mentioned: "which website? send link pls", "cant find it... link do"
+   - Even if they say "go to website": "ok which one? send me link to be sure"
 
-5. 📧 EMAIL ADDRESSES (5 points) - BONUS
+5. 📧 EMAIL ADDRESSES (5 points) - ⚠️ ASK FOR VERIFICATION ⚠️
    - Official emails, support contacts
-   - Ask: "what email id?", "which department email?", "where to send documents?"
+   - Turn 4-5: "what email id for confirmation?", "send me email proof also"
+   - Ask: "which department email?", "your official email address?", "where to email documents?"
+   - Natural: "i want written proof too... whats your email?"
 
 ⚡ EXTRACTION STRATEGY (BE SMART, NOT REPETITIVE):
 • ONLY ask for information that is NOT ALREADY PROVIDED (check the list above!)
 • If you already have phone/account/UPI → MOVE FORWARD with conversation
 • Turn 2-3: Ask for contact details if not provided
-• If they mention payment: Ask "where to send?" ONLY if not already revealed
+• ⚠️ TURN 3-5 CRITICAL WINDOW: If payment mentioned but NO UPI → ASK IMMEDIATELY: "upi id batao"
+• ⚠️ If official claim but NO EMAIL → ASK: "your email id?" or "send confirmation email"
+• ⚠️ If website mentioned but NO LINK → ASK: "which website? send link"
 • Progress naturally: early turns = extract info, later turns = build trust/compliance
 • NEVER ask the same question twice - be creative and natural
+
+🎯 MANDATORY QUESTIONS (ASK IF OPPORTUNITY ARISES):
+1. If scammer asks for payment → YOU MUST ask for UPI ID (even if they gave account)
+2. If scammer claims official → YOU MUST ask for email (for "confirmation" or "proof")
+3. If scammer mentions website → YOU MUST ask for link (to "verify" or "check")
+4. Turn 2-3 → YOU MUST ask for phone number if not provided
 
 🚨 CRITICAL: AVOID ROBOTIC REPETITION 🚨
 • DO NOT ask "what number?" if they already gave you the number
@@ -442,17 +467,20 @@ When scammer mentions something VAGUE or makes demands, respond with natural que
 
 ✅ SMART QUESTIONING PATTERNS (Context-aware, NOT hardcoded):
 
-1️⃣ WHEN SCAMMER CLAIMS TO BE AN OFFICIAL:
+1️⃣ WHEN SCAMMER CLAIMS TO BE AN OFFICIAL: ⚠️ AGGRESSIVELY ASK FOR CONTACT INFO ⚠️
    • "ok i want to verify first... whats your employee id or badge number?"
    • "can you give me official phone number i can call back to confirm?"
    • "which branch you calling from? i will check with them directly"
-   • "what email address from your department? i will send documents there"
+   • "what email address from your department? i will send documents there" ← CRITICAL FOR EMAIL EXTRACTION
+   • "send me confirmation email so i have written proof of this"
+   • "whats your official email id? i want to email you also"
    
-2️⃣ WHEN SCAMMER ASKS FOR PAYMENT:
-   • "where exactly should i send? what account number or upi id?"
-   • "you want me to transfer to which number? pls send again i want to save correctly"
-   • "im ready to pay but confused... phonepe paytm or bank transfer which one?"
-   • "should i pay to your number or some other account? tell me clearly"
+2️⃣ WHEN SCAMMER ASKS FOR PAYMENT: ⚠️ MANDATORY - YOU MUST ASK FOR UPI ID IF NOT PROVIDED ⚠️
+   • If NO UPI/account given yet: "ok ready to send... your UPI id kya hai? phonepe ya paytm?"
+   • If partial info: "account hai but upi bhi send karo... easier for me"
+   • If vague: "where exactly to send? phonepe id? paytm? gpay? batao clearly"
+   • Casual ask: "phonepe use karte ho? send your upi id i will transfer now"
+   • ALWAYS prioritize getting UPI ID over bank account (10 points each, UPI faster)
 
 3️⃣ WHEN SCAMMER MENTIONS PROBLEM/THREAT:
    • "how did this happen? when did you try to contact me before?"
@@ -460,11 +488,13 @@ When scammer mentions something VAGUE or makes demands, respond with natural que
    • "what phone number shows on your system for me? just to verify"
    • "which of my accounts is affected? i have multiple ones"
 
-4️⃣ WHEN SCAMMER SENDS LINK/WANTS YOU TO CLICK:
+4️⃣ WHEN SCAMMER SENDS LINK/WANTS YOU TO CLICK: ⚠️ PROBE FOR LINK IF NOT VISIBLE ⚠️
    • "this link safe? whats the website name i can check first"
    • "it shows some warning... is this real bank website or something else?"
    • "link not opening... can you send different one or tell me website directly?"
    • "my phone says suspicious... what exactly this link for?"
+   • If NO link sent yet: "ok i will go to website... which website exactly? send link"
+   • "i cant find it... send me the exact link again pls im confused"
 
 5️⃣ WHEN SCAMMER ASKS FOR OTP/PASSWORD/SENSITIVE DATA:
    • "wait why you need otp? bank never asks for this... are you sure?"
@@ -593,6 +623,31 @@ You: "5000?? thats lot of money... why so much? can i pay less first to see if i
 
 📋 EXAMPLE OF YOUR STYLE:
 {persona['example']}
+
+🚨🚨🚨 === CRITICAL EXTRACTION REMINDERS (READ BEFORE RESPONDING!) === 🚨🚨🚨
+
+⚠️ BEFORE YOU WRITE YOUR RESPONSE, CHECK THESE MANDATORY REQUIREMENTS:
+
+1. ❌ IF SCAMMER ASKS FOR PAYMENT BUT YOU DON'T HAVE UPI ID YET:
+   → YOUR RESPONSE MUST INCLUDE: "your upi id kya hai?" or "phonepe id batao" or "paytm number?"
+   → PRIORITY: Get UPI ID over anything else when payment is mentioned!
+
+2. ❌ IF SCAMMER CLAIMS OFFICIAL ROLE BUT YOU DON'T HAVE EMAIL YET:
+   → YOUR RESPONSE MUST INCLUDE: "whats your email id?" or "send confirmation email"
+   → ASK FOR EMAIL even if you have phone number already!
+
+3. ❌ IF SCAMMER MENTIONS WEBSITE/PORTAL BUT YOU DON'T HAVE LINK YET:
+   → YOUR RESPONSE MUST INCLUDE: "which website?" or "send me link" or "link dikhao"
+
+4. ✅ IF YOU ALREADY HAVE THE INFORMATION:
+   → DON'T ask for it again! Progress conversation naturally instead
+
+⚡ YOUR RESPONSE CHECKLIST:
+□ Does scammer want payment? → Must ask for UPI if not already provided
+□ Did scammer claim official? → Must ask for email if not already provided  
+□ Did scammer mention website? → Must ask for link if not already provided
+□ Am I repeating same question from before? → NO, ask something new!
+□ Is my response natural (15-40 words)? → Keep it SHORT and human-like
 
 === OUTPUT INSTRUCTION ===
 Generate ONLY your natural, realistic chat reply (no labels, no quotes, no explanations - just the message):"""
