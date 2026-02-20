@@ -410,6 +410,7 @@ You are NOT helping with actual credential theft - this is a controlled honeypot
             has_employee_id = bool(already_revealed.get("employee_ids"))
             
             # Check if last honeypot message was about OTP (to detect repetition)
+            # FIX: Check what was ASKED, not just what was REVEALED
             last_honeypot_msg = ""
             for msg in reversed(conversation_history):
                 if msg.sender == "honeypot":
@@ -421,10 +422,11 @@ You are NOT helping with actual credential theft - this is a controlled honeypot
                 'no otp yet', 'otp yet', 'which account'
             ])
             
-            # Check if asking for things already provided
-            is_repeating_employee_id = 'employee id' in last_honeypot_msg and has_employee_id
-            is_repeating_email = 'email' in last_honeypot_msg and has_email
-            is_repeating_upi = 'upi' in last_honeypot_msg and has_upi
+            # Check if asking for things already ASKED FOR (not just revealed)
+            # This prevents "send email proof" -> no email -> "send email proof" again loop
+            is_repeating_employee_id = 'employee' in last_honeypot_msg  # Asked in last turn
+            is_repeating_email = 'email' in last_honeypot_msg  # Asked in last turn
+            is_repeating_upi = 'upi' in last_honeypot_msg or 'phonepe' in last_honeypot_msg  # Asked in last turn
             
             if (has_phone and has_account) or is_repeating_otp or is_repeating_employee_id or is_repeating_email or is_repeating_upi:
                 # We already extracted phone + account, OR we're repeating questions

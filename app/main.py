@@ -45,6 +45,7 @@ last_message_time: Dict[str, datetime] = {}  # Track last message time for timeo
 message_counts: Dict[str, int] = {}  # Track total messages exchanged per session for limits
 last_agent_reply: Dict[str, str] = {}  # Cache last agent reply per session for fallback (PRIORITY 5)
 session_scam_types: Dict[str, str] = {}  # Track highest priority scam type per session (NEVER downgrades)
+session_start_times: Dict[str, datetime] = {}  # Track session start time for engagement duration calculation
 MESSAGE_TIMEOUT_SECONDS = int(os.getenv("MESSAGE_TIMEOUT_SECONDS", "10"))
 
 # Scam type priority hierarchy (higher number = higher priority, NEVER downgrades)
@@ -546,11 +547,20 @@ async def process_message_background(
                     conversation_history=conversation_history
                 )
                 
-                from app.models import CallbackPayload
+                # Calculate engagement duration
+                start_time = session_start_times.get(session_id, datetime.now(timezone.utc))
+                engagement_duration = int((datetime.now(timezone.utc) - start_time).total_seconds())
+                
+                from app.models import CallbackPayload, EngagementMetrics
+                engagement_metrics = EngagementMetrics(
+                    totalMessagesExchanged=total_msgs,
+                    engagementDurationSeconds=engagement_duration
+                )
+                
                 payload = CallbackPayload(
                     sessionId=session_id,
                     scamDetected=detection_result.is_scam,
-                    totalMessagesExchanged=total_msgs,
+                    engagementMetrics=engagement_metrics,
                     extractedIntelligence=intelligence,
                     agentNotes=agent_notes
                 )
@@ -678,6 +688,8 @@ async def honeypot_endpoint(
     # Track message count (scammer messages only, honeypot responses added later)
     if session_id not in message_counts:
         message_counts[session_id] = 0
+        # Track session start time on first message
+        session_start_times[session_id] = datetime.now(timezone.utc)
     message_counts[session_id] += 1  # Count scammer message
     
     # Total messages = scammer messages + honeypot responses (1:1 ratio)
