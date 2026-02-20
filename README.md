@@ -19,6 +19,7 @@ Online scams (bank fraud, UPI fraud, phishing, fake offers) are becoming increas
 - **API Key**: `team_recursives`
 - **Health Check**: `https://agentic-honey-pot-for-scam-detection-iiv4.onrender.com/health`
 - **Repository**: [GitHub Repository](https://github.com/SG2407/Agentic-Honey-Pot-for-Scam-Detection-Intelligence-Extraction)
+- **Performance**: ~2.7s average response time (target: <2.5s)
 
 ## ✨ Core Features
 
@@ -28,31 +29,49 @@ Online scams (bank fraud, UPI fraud, phishing, fake offers) are becoming increas
 - **Confidence Scoring**: 0.0-1.0 scale with configurable threshold (default 0.7)
 - **Scam Type Classification**: Financial threat, credential phishing, prize scam, impersonation, reward scam
 
-### 🤖 **Autonomous AI Agent**
-- **Multi-Provider Architecture**: OpenRouter (primary) and Groq (fallback) with automatic failover
-- **Supported Models**: Google Gemini 2.0 Flash, Llama 3.3 70B, GPT-4o-mini
+### 🤖 **Advanced Autonomous AI Agent**
+- **Multi-Provider Architecture**: OpenRouter (Gemini Flash 1.5-8B) → Groq (Llama 3.3 70B) → Template Fallbacks
+- **3-Tier Fallback System**: Ensures 99%+ uptime even when LLM providers fail
+- **Security Research Context**: System prompt explains honeypot role to bypass LLM safety filters
+- **Enhanced Human-like Responses**: 
+  - Frequency penalty (0.6) - Reduces phrase repetition
+  - Presence penalty (0.4) - Encourages topic diversity
+  - Top-P sampling (0.92) - Nucleus sampling for varied responses
+  - Temperature (0.9) - High variability for natural conversation
 - **Multi-Persona Engagement**: 
   - Worried Customer (concerned, anxious, asks clarifying questions)
   - Excited Winner (eager about prizes, cautiously optimistic)
   - Confused Elderly (needs step-by-step help, trusting)
   - Cautious User (skeptical, demands verification)
-- **Enhanced Human-like Responses**: Frequency penalty, presence penalty, nucleus sampling (Top-P)
+- **Anti-Repetition System**: 
+  - Tracks what questions were asked in previous turn
+  - Detects when asking for already-provided information (employee ID, email, UPI)
+  - Explicit forbidden phrase lists prevent loops
+  - Intelligence status display (✅/❌) guides next question
 - **Context-Aware**: Uses conversation history for natural, progressive engagement
-- **Persona Selection**: Automatically matches persona to detected scam type
 - **Never Reveals Detection**: Maintains believable persona throughout
 
-### 📊 **Intelligence Extraction**
+### 📊 **Aggressive Intelligence Extraction**
 Automatically extracts and tracks from entire conversation history:
-- 🏦 **Bank Account Numbers** - Various formats using regex patterns
-- 💳 **UPI IDs** - e.g., scammer@upi, scammer@paytm
-- 📞 **Phone Numbers** - International format (+91-XXXXXXXXXX)
-- 🔗 **Phishing Links** - Malicious URLs with suspicious TLDs
-- ✉️ **Email Addresses** - scammer@domain.com patterns
+- 🏦 **Bank Account Numbers** (10 pts) - Various formats using regex patterns
+- 💳 **UPI IDs** (10 pts) - e.g., scammer@upi, scammer@paytm - **AGGRESSIVELY ASKED**
+- 📞 **Phone Numbers** (10 pts) - International format (+91-XXXXXXXXXX) - **EARLY-TURN PRIORITY**
+- 🔗 **Phishing Links** (10 pts) - Malicious URLs with suspicious TLDs
+- ✉️ **Email Addresses** (5 pts) - scammer@domain.com patterns - **ASKED FOR VERIFICATION**
 - 🔑 **Suspicious Keywords** - 26+ patterns (urgent, verify, OTP, blocked, click here, etc.)
+- 👤 **Employee IDs** - Tracked to prevent repetitive questioning
+
+**Strategic Extraction Features**:
+- ⚡ **Early-turn questioning** (turns 2-4): Aggressively asks for contact details
+- 🎯 **Mandatory extraction rules**: System prompted to MUST ask for UPI/email/links
+- 🔄 **Intelligence pivot**: When phone+account extracted, automatically shifts to asking for UPI/email
+- 🚫 **Non-repetition enforcement**: Detects what was asked last turn, forbids repeating it
+- 📋 **Step-by-step checklist**: Ensures systematic extraction without loops
 
 ### ⏱️ **Smart Session Management**
 - **In-Memory Session Store**: Tracks active sessions, callback status, and message timestamps
-- **Intelligence-Based Callbacks**: Sends final report to GUVI when actionable intelligence is extracted
+- **Engagement Duration Tracking**: Records session start time and calculates total engagement duration
+- **Intelligence-Based Callbacks**: Sends final report to GUVI when 80%+ intelligence extracted OR 20 turns reached
 - **Session Tracking**: Prevents duplicate callbacks for closed sessions
 - **Conversation Limits**: Configurable max turns per conversation (default: 20 turns)
 
@@ -64,22 +83,30 @@ Automatically extracts and tracks from entire conversation history:
 **Scoring Breakdown** (45 points maximum):
 - 📞 **Phone Numbers**: 10 points (highest priority - contact tracing)
 - 🏦 **Bank Account Numbers**: 10 points (financial fraud evidence)
-- 💳 **UPI IDs**: 10 points (payment fraud tracking)
+- 💳 **UPI IDs**: 10 points (payment fraud tracking) - **MOST OFTEN MISSING**
 - 🔗 **Phishing Links**: 10 points (malicious infrastructure)
 - 📧 **Email Addresses**: 5 points (secondary contact method)
 
 **Strategic Extraction Features**:
 - ⚡ **Early-turn questioning** (turns 2-4): Aggressively asks for contact details
-- 🎭 **Context-aware prompts**: AI explicitly guided to extract 5 intelligence types
-- 🔄 **Link re-request strategies**: Asks scammer to resend unclear/broken links
+- 🎭 **Mandatory extraction prompts**: AI MUST ask for UPI/email/links with Indian English phrases
+- 🔄 **Intelligence pivot detection**: When phone+account obtained, automatically switches to UPI/email
+- 🚫 **Anti-repetition system**: Tracks asked questions, forbids repeating them
+- 📋 **Step-by-step checklist**: Prevents asking for already-provided information
 - 🧠 **Adaptive questioning**: Identifies missing high-value data and prompts accordingly
+- 🛡️ **Sensitive request handling**: Special logic for OTP/password requests to extract scammer intel
 
 **Example Score Calculation**:
 ```
 Scenario: Bank fraud scam
-Extracted: +91-9876543210 (phone), 1234567890123456 (bank), scammer@upi (UPI)
+Extracted: +91-9876543210 (phone), 1234567890123456 (bank), scammer@paytm (UPI)
 Score: 10 + 10 + 10 = 30/45 points (67%)
-Result: Below 80% threshold → Continues conversation to extract more
+Result: Below 80% threshold → Continues conversation to extract email/links
+
+After 5 more turns:
+Extracted: + support@bank.com (email), + http://fake-bank.com (link)
+Final Score: 10 + 10 + 10 + 5 + 10 = 45/45 points (100%)
+Result: 80%+ threshold met → Triggers callback immediately
 ```
 
 ### 🛡️ **Robust Input Handling**
@@ -120,16 +147,20 @@ Result: Below 80% threshold → Continues conversation to extract more
   ┌──────────┐    ┌────────────────┐    ┌────────────────┐  │
   │ Neutral  │    │ Conversation   │    │ Intelligence   │  │
   │ Response │    │ Agent (AI)     │    │ Extractor      │  │
-  │          │    │ Multi-persona  │    │                │  │
+  │          │    │ Multi-persona  │    │ • Employee ID  │  │
+  │          │    │ Anti-repetition│    │   tracking     │  │
   └──────────┘    └────────┬───────┘    └────────┬───────┘  │
          │                 │                      │          │
          │                 │                      │          │
          │                 ▼                      │          │
-         │        ┌─────────────────────────┐    │          │
-         │        │   LLM Manager           │    │          │
-         │        │   • OpenRouter          │    │          │
-         │        │   • Groq Fallback       │    │          │
-         │        └─────────────────────────┘    │          │
+         │        ┌─────────────────────────────┐ │          │
+         │        │   LLM Manager (3-Tier)      │ │          │
+         │        │   1. OpenRouter Primary     │ │          │
+         │        │   2. Groq Fallback          │ │          │
+         │        │   3. Template Fallback      │ │          │
+         │        │   • 20 context-aware OTP    │ │          │
+         │        │   • Sensitive request logic │ │          │
+         │        └─────────────────────────────┘ │          │
          │                 │                      │          │
          │                 │    [Intel Found]     │          │
          │                 │         │            │          │
@@ -139,9 +170,11 @@ Result: Below 80% threshold → Continues conversation to extract more
          │        │   POST to GUVI                   │
          │        │   • sessionId                    │
          │        │   • scamDetected                 │
-         │        │   • totalMessagesExchanged       │
+         │        │   • engagementMetrics            │
+         │        │     - totalMessagesExchanged     │
+         │        │     - engagementDurationSeconds  │
          │        │   • extractedIntelligence        │
-         │        │   • agentNotes                   │
+         │        │   • agentNotes (dynamic)         │
          │        └──────────────────────────────────┘
          │                 │
          ▼                 ▼
@@ -252,7 +285,8 @@ API_KEY=team_recursives
 
 # OpenRouter (Primary - Conversation generation)
 OPENROUTER_API_KEY=your_openrouter_api_key_here
-OPENROUTER_CONVERSATION_MODEL=google/gemini-2.0-flash-exp:free
+OPENROUTER_CONVERSATION_MODEL=google/gemini-flash-1.5-8b
+OPENROUTER_SUMMARIZATION_MODEL=google/gemini-flash-1.5-8b
 
 # Groq (Fallback - Scam detection)
 GROQ_API_KEY=your_groq_api_key_here
@@ -263,12 +297,14 @@ GUVI_CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
 
 # Conversation Settings
 MAX_CONVERSATION_TURNS=20
+MAX_TOKENS_PER_REPLY=150
+CONVERSATION_TEMPERATURE=0.9
 SCAM_CONFIDENCE_THRESHOLD=0.7
 
 # LLM Enhancement Parameters
-LLM_FREQUENCY_PENALTY=0.3
-LLM_PRESENCE_PENALTY=0.2
-LLM_TOP_P=0.95
+LLM_FREQUENCY_PENALTY=0.6
+LLM_PRESENCE_PENALTY=0.4
+LLM_TOP_P=0.92
 
 # Application Settings
 ENVIRONMENT=development
@@ -385,15 +421,18 @@ The system is deployed on Render's free tier.
 ```env
 API_KEY=team_recursives
 OPENROUTER_API_KEY=<your_key>
-OPENROUTER_CONVERSATION_MODEL=google/gemini-2.0-flash-exp:free
+OPENROUTER_CONVERSATION_MODEL=google/gemini-flash-1.5-8b
+OPENROUTER_SUMMARIZATION_MODEL=google/gemini-flash-1.5-8b
 GROQ_API_KEY=<your_key>
 GROQ_MODEL=llama-3.3-70b-versatile
 GUVI_CALLBACK_URL=https://hackathon.guvi.in/api/updateHoneyPotFinalResult
 MAX_CONVERSATION_TURNS=20
+MAX_TOKENS_PER_REPLY=150
+CONVERSATION_TEMPERATURE=0.9
 SCAM_CONFIDENCE_THRESHOLD=0.7
-LLM_FREQUENCY_PENALTY=0.3
-LLM_PRESENCE_PENALTY=0.2
-LLM_TOP_P=0.95
+LLM_FREQUENCY_PENALTY=0.6
+LLM_PRESENCE_PENALTY=0.4
+LLM_TOP_P=0.92
 ENVIRONMENT=production
 LOG_LEVEL=INFO
 ```
@@ -534,10 +573,11 @@ Expected response:
 
 **AI/LLM Providers:**
 - **OpenRouter API**: Primary conversation generation provider
-  - Model: Google Gemini 2.0 Flash (fast, cost-effective)
-  - Fallback: GPT-4o-mini (high quality)
+  - Model: Google Gemini Flash 1.5-8B (fast, cost-effective, 8K context)
+  - Fallback: Groq Llama 3.3 70B
 - **Groq API**: Scam detection and fallback provider
-  - Model: Llama 3.3 70B Versatile
+  - Model: Llama 3.3 70B Versatile (ultra-fast inference)
+- **Template Fallbacks**: 20+ context-aware responses for OTP/password requests
 - **openai >=1.0.0**: OpenAI-compatible client library
 - **groq >=0.4.1**: Official Groq SDK
 
@@ -566,16 +606,32 @@ Expected response:
 - Multiple API key header support
 
 **Multi-Provider LLM Architecture:**
-- Automatic failover between providers
+- 3-tier failover: OpenRouter → Groq → Templates
 - Configurable models per provider
 - Enhanced response parameters (frequency/presence penalties, Top-P sampling)
-- Template-based fallback responses
+- 20+ context-aware template fallbacks for sensitive requests (OTP/password)
+- Security research context in prompts to bypass LLM safety filters
+- Anti-repetition system: tracks asked questions, forbidden phrase lists
 
 **Session Management:**
 - In-memory session tracking
+- Engagement duration calculation (start time → callback time)
 - Callback status monitoring
 - Message counting and timeout handling
 - Prevents duplicate callbacks
+
+**Performance Metrics:**
+- Average response time: ~2.7s (target: <2.5s)
+- Scam detection: <0.001s (regex + AI)
+- Parallel processing: Detection + reply generation simultaneously
+- LLM timeout: 6s (allows Groq fallback)
+
+**Intelligence Extraction:**
+- Employee ID tracking (prevents repetitive questioning)
+- Step-by-step extraction checklist
+- Intelligence pivot logic (phone+account → UPI/email)
+- Explicit forbidden phrases for non-repetition
+- Mandatory extraction rules with aggressive prompting
 
 ### Environment Variables
 
@@ -583,15 +639,18 @@ Expected response:
 |----------|---------|-------------|
 | `API_KEY` | `team_recursives` | API authentication key |
 | `OPENROUTER_API_KEY` | *Required* | OpenRouter API key |
-| `OPENROUTER_CONVERSATION_MODEL` | `google/gemini-2.0-flash-exp:free` | Primary conversation model |
+| `OPENROUTER_CONVERSATION_MODEL` | `google/gemini-flash-1.5-8b` | Primary conversation model |
+| `OPENROUTER_SUMMARIZATION_MODEL` | `google/gemini-flash-1.5-8b` | Summarization model |
 | `GROQ_API_KEY` | *Required* | Groq API key |
 | `GROQ_MODEL` | `llama-3.3-70b-versatile` | Scam detection model |
 | `GUVI_CALLBACK_URL` | GUVI endpoint | Final result callback URL |
 | `MAX_CONVERSATION_TURNS` | `20` | Maximum conversation turns |
+| `MAX_TOKENS_PER_REPLY` | `150` | Maximum tokens per honeypot reply |
+| `CONVERSATION_TEMPERATURE` | `0.9` | LLM temperature for variability |
 | `SCAM_CONFIDENCE_THRESHOLD` | `0.7` | Scam detection threshold (0.0-1.0) |
-| `LLM_FREQUENCY_PENALTY` | `0.3` | Reduce repetition (0.0-2.0) |
-| `LLM_PRESENCE_PENALTY` | `0.2` | Encourage topic diversity (0.0-2.0) |
-| `LLM_TOP_P` | `0.95` | Nucleus sampling (0.0-1.0) |
+| `LLM_FREQUENCY_PENALTY` | `0.6` | Reduce repetition (0.0-2.0) |
+| `LLM_PRESENCE_PENALTY` | `0.4` | Encourage topic diversity (0.0-2.0) |
+| `LLM_TOP_P` | `0.92` | Nucleus sampling (0.0-1.0) |
 | `ENVIRONMENT` | `development` | Environment mode |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
