@@ -62,6 +62,81 @@ class ConversationAgent:
         }
         return persona_map.get(scam_type, "worried_customer")
     
+    def _extract_already_revealed_intel(self, history: List[Message]) -> dict:
+        """
+        Extract what intelligence the scammer has ALREADY provided in conversation.
+        This prevents the agent from asking for the same information repeatedly.
+        """
+        conversation_text = " ".join([msg.text for msg in history])
+        
+        revealed = {
+            "phone_numbers": [],
+            "bank_accounts": [],
+            "upi_ids": [],
+            "links": [],
+            "emails": []
+        }
+        
+        # Phone numbers (Indian format)
+        phone_pattern = r'(?:(?:\+91[\s-]?)|(?:0)?)?([6-9]\d{9})'
+        revealed["phone_numbers"] = list(set(re.findall(phone_pattern, conversation_text)))
+        
+        # Bank account numbers (9-18 digits)
+        bank_pattern = r'\b\d{9,18}\b'
+        potential_banks = re.findall(bank_pattern, conversation_text)
+        # Filter out phone numbers from bank accounts
+        revealed["bank_accounts"] = [acc for acc in potential_banks if len(acc) >= 12 and acc not in revealed["phone_numbers"]]
+        
+        # UPI IDs
+        upi_pattern = r'\b[a-zA-Z0-9.\-_]{2,}@[a-zA-Z]{2,}\b'
+        revealed["upi_ids"] = list(set(re.findall(upi_pattern, conversation_text)))
+        
+        # Links
+        link_pattern = r'https?://[^\s]+'
+        revealed["links"] = list(set(re.findall(link_pattern, conversation_text)))
+        
+        # Emails
+        email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+        revealed["emails"] = list(set(re.findall(email_pattern, conversation_text)))
+        
+        return revealed
+    
+    def _format_revealed_intel(self, revealed: dict) -> str:
+        """Format already revealed intelligence for prompt"""
+        lines = []
+        
+        if revealed["phone_numbers"]:
+            lines.append(f"✓ Phone number(s): {', '.join(revealed['phone_numbers'])}")
+            lines.append(f"  → DO NOT ask for phone number again! You already know: {', '.join(revealed['phone_numbers'])}")
+        else:
+            lines.append("✗ Phone number: NOT YET PROVIDED - Ask for it naturally if appropriate")
+        
+        if revealed["bank_accounts"]:
+            lines.append(f"✓ Bank account(s): {', '.join(revealed['bank_accounts'])}")
+            lines.append(f"  → DO NOT ask for account number again! You already have it")
+        else:
+            lines.append("✗ Bank account: NOT YET PROVIDED - Extract if payment mentioned")
+        
+        if revealed["upi_ids"]:
+            lines.append(f"✓ UPI ID(s): {', '.join(revealed['upi_ids'])}")
+            lines.append(f"  → DO NOT ask for UPI ID again!")
+        else:
+            lines.append("✗ UPI ID: NOT YET PROVIDED - Ask if payment involved")
+        
+        if revealed["links"]:
+            lines.append(f"✓ Link(s): {', '.join(revealed['links'])}")
+            lines.append(f"  → DO NOT ask for link again!")
+        else:
+            lines.append("✗ Links: NOT YET PROVIDED - Ask if they mention website")
+        
+        if revealed["emails"]:
+            lines.append(f"✓ Email(s): {', '.join(revealed['emails'])}")
+            lines.append(f"  → DO NOT ask for email again!")
+        else:
+            lines.append("✗ Email: NOT YET PROVIDED - Extract if they claim to be official")
+        
+        return "\n".join(lines)
+    
     def _build_conversation_context(self, history: List[Message]) -> str:
         """Build conversation context from history with emotional progression"""
         if not history:
@@ -256,6 +331,9 @@ class ConversationAgent:
         elif locale and 'IN' in str(locale).upper():
             style_hints = "Use Indian context: mention INR, local payment methods (Paytm, PhonePe, GPay)."
         
+        # Track what information the scammer has ALREADY revealed (CRITICAL TO AVOID REPETITION)
+        already_revealed = self._extract_already_revealed_intel(conversation_history)
+        
         # Strategic question-asking tactics - context-aware intelligence extraction
         strategic_questioning = self._build_strategic_questions(scammer_message, scam_type, turn_count)
         
@@ -282,6 +360,9 @@ Scammer's latest message: "{scammer_message}"
 
 === CONVERSATION HISTORY ===
 {context}
+
+⚠️ === INFORMATION SCAMMER HAS ALREADY PROVIDED (DO NOT ASK FOR THESE AGAIN!) === ⚠️
+{self._format_revealed_intel(already_revealed)}
 
 === YOUR CHARACTER PROFILE ===
 Personality: {persona['traits']}
@@ -317,13 +398,19 @@ Your goal is to engage and extract these 5 HIGH-VALUE intelligence types through
    - Official emails, support contacts
    - Ask: "what email id?", "which department email?", "where to send documents?"
 
-⚡ EXTRACTION STRATEGY (BE AGGRESSIVE IN TURNS 2-4):
-• Turn 2-3: ALWAYS ask for contact details - "what number/email can i reach you?"
-• If they mention payment: Immediately ask "where to send? what account/upi?"
-• If they claim official: Ask "what number to call back?", "which department email?"
-• If they mention link/website: If not visible, say "link not showing, send again?"
-• If they want you to click somewhere: "what exact website address? want to verify first"
-• If NO contact info by turn 3: Express concern - "how do i contact you later if issue?"
+⚡ EXTRACTION STRATEGY (BE SMART, NOT REPETITIVE):
+• ONLY ask for information that is NOT ALREADY PROVIDED (check the list above!)
+• If you already have phone/account/UPI → MOVE FORWARD with conversation
+• Turn 2-3: Ask for contact details if not provided
+• If they mention payment: Ask "where to send?" ONLY if not already revealed
+• Progress naturally: early turns = extract info, later turns = build trust/compliance
+• NEVER ask the same question twice - be creative and natural
+
+🚨 CRITICAL: AVOID ROBOTIC REPETITION 🚨
+• DO NOT ask "what number?" if they already gave you the number
+• DO NOT ask "which account?" if they already told you
+• DO NOT repeat your previous questions - always move the conversation forward
+• If info already provided → acknowledge it and ask something NEW
 
 💡 REMEMBER: Extract naturally through confusion, obstacles, and verification needs!
 
@@ -448,19 +535,30 @@ CRITICAL: NEVER explicitly ask for scammer's details. Instead, create situations
 - "Can you share the payment link?" ← Explicitly requesting
 - "What's your employee ID?" ← Only suspicious people ask this upfront
 
-🎭 ADAPTIVE RESPONSES:
+🎭 ADAPTIVE RESPONSES & NATURAL PROGRESSION:
 • NEVER PARROT BACK what scammer said - don't summarize their message
-• NEVER start with "ok so you said..." or "wait you want me to..." - be original
+• NEVER repeat information they've already given you - check the "already provided" list above!
+• If they've given you their number → Don't ask for it again, move to next concern
+• If they've given account/UPI → Don't ask again, progress to compliance/hesitation
 • React with EMOTIONS, not summaries: "oh no!", "really?", "im scared now"
-• Ask NEW questions that move conversation forward, don't repeat their requests
+• Ask NEW questions that move conversation forward, don't get stuck in loops
 • Focus on YOUR character's thoughts/concerns, not restating their demands
 • Adapt tone based on scammer's urgency/pressure
 • If they're aggressive → show more worry/compliance
 • If they're friendly → show more trust/openness
 
+⚡ CONVERSATION PROGRESSION (Don't stay stuck!):
+• Turns 1-3: Initial reaction + ask for missing info
+• Turns 4-6: Build context + show concerns + ask for verification details
+• Turns 7+: Show readiness to comply + create obstacles + ask procedural questions
+
 🚫 BAD (too repetitive, parroting):
 Scammer: "Send 5000 to UPI scam@fake and call +91-123456"
 You: "ok so you want me to send 5000 to UPI scam@fake and call +91-123456?"
+
+✅ GOOD (natural, progressing):
+Scammer: "Send 5000 to UPI scam@fake and call +91-123456"  
+You: "wait this is urgent? i have the money but my wife will ask questions... what reason should i tell her?"
 ❌ This is ROBOTIC - you're just repeating their exact words!
 
 ✅ GOOD (natural reaction):
