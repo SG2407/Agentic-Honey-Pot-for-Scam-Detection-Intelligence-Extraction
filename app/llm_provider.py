@@ -136,24 +136,21 @@ class LLMManager:
     """
     PRIORITY 2: LLM Manager with automatic fallback
     
-    Three-tier fallback strategy (RECOMMENDED SETUP):
+    Two-tier fallback strategy (OPTIMIZED FOR SPEED):
     1. OpenRouter Primary: meta-llama/llama-3.1-8b-instruct (fast, cheap, reliable)
-    2. OpenRouter Fallback: openai/gpt-4o-mini (high quality, instruction adherence)
-    3. Groq Last Resort: llama-3.3-70b-versatile (only if OpenRouter fails)
-    4. Template-based responses (final fallback)
+    2. Groq Fallback: llama-3.3-70b-versatile (fast, reliable fallback)
+    3. Template-based responses (final fallback in conversation_agent)
     """
     
     def __init__(self):
-        # Create multiple provider instances with different models
+        # Create provider instances
         openrouter_primary = OpenRouterProvider()
-        openrouter_fallback = OpenRouterProvider()
-        groq_last_resort = GroqProvider()
+        groq_fallback = GroqProvider()
         
-        # Configure models
+        # Configure models - OpenRouter first, then Groq
         self.providers = [
             (openrouter_primary, "meta-llama/llama-3.1-8b-instruct"),     # Tier 1: Fast & cheap
-            (openrouter_fallback, "openai/gpt-4o-mini"),                  # Tier 2: High quality
-            (groq_last_resort, None),                                      # Tier 3: Use default model
+            (groq_fallback, None),                                         # Tier 2: Fast fallback
         ]
         
         # Log available providers

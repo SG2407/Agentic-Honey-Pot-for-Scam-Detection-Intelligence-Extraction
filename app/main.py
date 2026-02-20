@@ -706,10 +706,12 @@ async def honeypot_endpoint(
             request.metadata
         )
         
-        # Wait for both tasks with 2.5s timeout (max of detection + reply)
+        # Wait for both tasks with 6s timeout (allows OpenRouter → Groq fallback)
+        # Detection is instant (<0.1s), so timeout mainly for LLM reply generation
+        # Allows: OpenRouter attempt (2.5s) + Groq fallback (2-3s) + buffer
         detection_result, generated_reply = await asyncio.wait_for(
             asyncio.gather(detection_task, reply_task),
-            timeout=2.5
+            timeout=6.0
         )
         
         # Calculate total time
@@ -729,8 +731,8 @@ async def honeypot_endpoint(
         
     except asyncio.TimeoutError:
         timeout_duration = (datetime.now(timezone.utc) - parallel_start_time).total_seconds()
-        logger.warning(f"⏱️  [Session {session_id}] LLM timeout after {timeout_duration:.2f}s - using fallback")
-        # Fallback to simple acknowledgment
+        logger.error(f"⏱️  [Session {session_id}] All LLMs (OpenRouter + Groq) timed out after {timeout_duration:.2f}s - using template fallback")
+        # Fallback to simple acknowledgment (should rarely happen - LLMManager has internal OpenRouter → Groq fallback)
         reply = "I understand. Could you explain that again?"
     except Exception as e:
         logger.error(f"❌ [Session {session_id}] Reply generation failed: {str(e)[:100]}")
