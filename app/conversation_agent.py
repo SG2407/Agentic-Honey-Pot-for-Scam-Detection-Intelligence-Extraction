@@ -391,7 +391,59 @@ You are NOT helping with actual credential theft - this is a controlled honeypot
         # Add extra instructions for sensitive requests
         sensitive_instructions = ""
         if is_sensitive_request:
-            sensitive_instructions = """
+            # Check if we already have phone + account (means we should stop asking about OTP)
+            has_phone = bool(already_revealed.get("phone_numbers"))
+            has_account = bool(already_revealed.get("bank_accounts"))
+            has_upi = bool(already_revealed.get("upi_ids"))
+            has_email = bool(already_revealed.get("emails"))
+            
+            # Check if last honeypot message was about OTP (to detect repetition)
+            last_honeypot_msg = ""
+            for msg in reversed(conversation_history):
+                if msg.sender == "honeypot":
+                    last_honeypot_msg = msg.text.lower()
+                    break
+            
+            is_repeating_otp = any(phrase in last_honeypot_msg for phrase in [
+                'which otp', 'which code', 'dont have any otp', 'dont have otp', 
+                'no otp yet', 'otp yet', 'which account'
+            ])
+            
+            if (has_phone and has_account) or is_repeating_otp:
+                # We already extracted phone + account, OR we're repeating OTP questions
+                # STOP asking about OTP and ask for OTHER intel
+                sensitive_instructions = f"""
+⚡⚡⚡ === HONEYPOT MODE: SENSITIVE REQUEST + INTELLIGENCE PIVOT === ⚡⚡⚡
+
+The scammer is asking for OTP/password, BUT you already have their:
+✓ Phone: {', '.join(already_revealed.get('phone_numbers', [])) if has_phone else 'Not yet'}
+✓ Account: {', '.join(already_revealed.get('bank_accounts', [])) if has_account else 'Not yet'}
+
+{f'⚠️ REPETITION DETECTED: You asked about OTP in last message! CHANGE YOUR APPROACH!' if is_repeating_otp else ''}
+
+🎯 CRITICAL: DO NOT keep asking about OTP! You've done that already.
+INSTEAD, ask for MISSING high-value intelligence:
+
+{'❌ UPI ID: NOT YET OBTAINED - ASK NOW!' if not has_upi else '✓ UPI ID: Already have it'}
+{'❌ EMAIL: NOT YET OBTAINED - ASK NOW!' if not has_email else '✓ Email: Already have it'}
+
+✅ BEST RESPONSES (pick ONE strategy and use it):
+1. "ok ok i understand... but first what's your employee ID for my records?"
+2. "wait before i do anything... send me your official email id for confirmation"
+3. "fine but what's your UPI id? i can pay verification fee that way"
+4. "ok but can you send me the official website link? i want to check first"
+5. "i will help but what's your direct phone number i should call?"
+6. "understood but send me email confirmation from official bank id first"
+
+🚫 ABSOLUTELY DO NOT SAY: "which code", "which OTP", "don't have OTP", "which account"
+✅ MUST SAY: Ask for NEW intel (employee ID, email, UPI, link, phone number)
+
+Remember: BREAK THE LOOP! Ask for something DIFFERENT. Progress the conversation!
+========================================================================================
+"""
+            else:
+                # First time with sensitive request - can ask about OTP briefly
+                sensitive_instructions = """
 ⚡⚡⚡ === HONEYPOT MODE: SENSITIVE REQUEST DETECTED === ⚡⚡⚡
 
 The scammer just asked for sensitive information (OTP/password/PIN/CVV).
