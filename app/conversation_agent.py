@@ -74,7 +74,8 @@ class ConversationAgent:
             "bank_accounts": [],
             "upi_ids": [],
             "links": [],
-            "emails": []
+            "emails": [],
+            "employee_ids": []  # NEW: Track employee IDs
         }
         
         # Phone numbers (Indian format)
@@ -95,9 +96,13 @@ class ConversationAgent:
         link_pattern = r'https?://[^\s]+'
         revealed["links"] = list(set(re.findall(link_pattern, conversation_text)))
         
-        # Emails
+        # Emails (more lenient pattern)
         email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
         revealed["emails"] = list(set(re.findall(email_pattern, conversation_text)))
+        
+        # Employee IDs (look for patterns like "employee ID is 123456" or "ID: 123456")
+        employee_id_pattern = r'(?:employee\s*(?:id|ID|Id)?\s*(?:is|:)?\s*)(\d{4,10})'
+        revealed["employee_ids"] = list(set(re.findall(employee_id_pattern, conversation_text, re.IGNORECASE)))
         
         return revealed
     
@@ -121,7 +126,7 @@ class ConversationAgent:
             lines.append(f"✓ UPI ID(s): {', '.join(revealed['upi_ids'])}")
             lines.append(f"  → DO NOT ask for UPI ID again!")
         else:
-            lines.append("✗ UPI ID: NOT YET PROVIDED - Ask if payment involved")
+            lines.append("✗ UPI ID: NOT YET PROVIDED - ⚠️ HIGH PRIORITY - Ask if payment involved!")
         
         if revealed["links"]:
             lines.append(f"✓ Link(s): {', '.join(revealed['links'])}")
@@ -131,9 +136,15 @@ class ConversationAgent:
         
         if revealed["emails"]:
             lines.append(f"✓ Email(s): {', '.join(revealed['emails'])}")
-            lines.append(f"  → DO NOT ask for email again!")
+            lines.append(f"  → DO NOT ask for email again! You already have: {', '.join(revealed['emails'])}")
         else:
             lines.append("✗ Email: NOT YET PROVIDED - Extract if they claim to be official")
+        
+        if revealed.get("employee_ids"):
+            lines.append(f"✓ Employee ID(s): {', '.join(revealed['employee_ids'])}")
+            lines.append(f"  → DO NOT ask for employee ID again! You already have: {', '.join(revealed['employee_ids'])}")
+        else:
+            lines.append("✗ Employee ID: NOT YET PROVIDED - Ask if they claim to be official")
         
         return "\n".join(lines)
     
@@ -396,6 +407,7 @@ You are NOT helping with actual credential theft - this is a controlled honeypot
             has_account = bool(already_revealed.get("bank_accounts"))
             has_upi = bool(already_revealed.get("upi_ids"))
             has_email = bool(already_revealed.get("emails"))
+            has_employee_id = bool(already_revealed.get("employee_ids"))
             
             # Check if last honeypot message was about OTP (to detect repetition)
             last_honeypot_msg = ""
@@ -409,36 +421,71 @@ You are NOT helping with actual credential theft - this is a controlled honeypot
                 'no otp yet', 'otp yet', 'which account'
             ])
             
-            if (has_phone and has_account) or is_repeating_otp:
-                # We already extracted phone + account, OR we're repeating OTP questions
-                # STOP asking about OTP and ask for OTHER intel
+            # Check if asking for things already provided
+            is_repeating_employee_id = 'employee id' in last_honeypot_msg and has_employee_id
+            is_repeating_email = 'email' in last_honeypot_msg and has_email
+            is_repeating_upi = 'upi' in last_honeypot_msg and has_upi
+            
+            if (has_phone and has_account) or is_repeating_otp or is_repeating_employee_id or is_repeating_email or is_repeating_upi:
+                # We already extracted phone + account, OR we're repeating questions
+                # STOP asking and ask for OTHER intel
+                
+                missing_intel = []
+                if not has_upi:
+                    missing_intel.append("❌ UPI ID: NOT YET OBTAINED - ASK NOW! (10 points)")
+                if not has_email:
+                    missing_intel.append("❌ EMAIL: NOT YET OBTAINED - ASK NOW! (5 points)")
+                if not has_employee_id:
+                    missing_intel.append("❌ EMPLOYEE ID: NOT YET OBTAINED - ASK NOW!")
+                
+                repetition_warning = ""
+                forbidden_questions = []
+                if is_repeating_employee_id:
+                    repetition_warning = f"🚨🚨🚨 CRITICAL ERROR: You asked for employee ID but ALREADY HAVE IT: {', '.join(already_revealed.get('employee_ids', []))}! DO NOT ASK AGAIN!"
+                    forbidden_questions.append('"employee ID"')
+                    forbidden_questions.append('"what\'s your employee ID"')
+                if is_repeating_email:
+                    repetition_warning = f"🚨🚨🚨 CRITICAL ERROR: You asked for email but ALREADY HAVE IT: {', '.join(already_revealed.get('emails', []))}! DO NOT ASK AGAIN!"
+                    forbidden_questions.append('"email id"')
+                    forbidden_questions.append('"official email"')
+                    forbidden_questions.append('"your email"')
+                if is_repeating_otp:
+                    repetition_warning = "🚨🚨🚨 CRITICAL ERROR: You asked about OTP in last message! STOP ASKING ABOUT OTP!"
+                    forbidden_questions.append('"which code"')
+                    forbidden_questions.append('"which OTP"')
+                    forbidden_questions.append('"don\'t have OTP"')
+                if is_repeating_upi:
+                    repetition_warning = f"🚨🚨🚨 CRITICAL ERROR: You asked for UPI but ALREADY HAVE IT: {', '.join(already_revealed.get('upi_ids', []))}! DO NOT ASK AGAIN!"
+                    forbidden_questions.append('"UPI id"')
+                    forbidden_questions.append('"phonepe"')
+                
                 sensitive_instructions = f"""
-⚡⚡⚡ === HONEYPOT MODE: SENSITIVE REQUEST + INTELLIGENCE PIVOT === ⚡⚡⚡
+🚨🚨🚨 === CRITICAL: STOP REPEATING QUESTIONS! === 🚨🚨🚨
 
-The scammer is asking for OTP/password, BUT you already have their:
-✓ Phone: {', '.join(already_revealed.get('phone_numbers', [])) if has_phone else 'Not yet'}
-✓ Account: {', '.join(already_revealed.get('bank_accounts', [])) if has_account else 'Not yet'}
+{repetition_warning}
 
-{f'⚠️ REPETITION DETECTED: You asked about OTP in last message! CHANGE YOUR APPROACH!' if is_repeating_otp else ''}
+📋 INTELLIGENCE STATUS:
+✅ Phone: {', '.join(already_revealed.get('phone_numbers', [])) if has_phone else '❌ NOT YET'}
+✅ Account: {', '.join(already_revealed.get('bank_accounts', [])) if has_account else '❌ NOT YET'}
+{'✅ Email: ' + ', '.join(already_revealed.get('emails', [])) if has_email else '❌ Email: NOT YET - ASK FOR IT!'}
+{'✅ Employee ID: ' + ', '.join(already_revealed.get('employee_ids', [])) if has_employee_id else '❌ Employee ID: NOT YET - ASK FOR IT!'}
+{'✅ UPI ID: ' + ', '.join(already_revealed.get('upi_ids', [])) if has_upi else '❌ UPI ID: NOT YET - ASK FOR IT!'}
+Link: {'✅ ' + ', '.join(already_revealed.get('links', [])) if already_revealed.get('links') else '❌ NOT YET - ASK FOR IT!'}
 
-🎯 CRITICAL: DO NOT keep asking about OTP! You've done that already.
-INSTEAD, ask for MISSING high-value intelligence:
+🚫 ABSOLUTELY FORBIDDEN - DO NOT USE THESE PHRASES:
+{chr(10).join('   🚫 ' + phrase for phrase in forbidden_questions) if forbidden_questions else '   (none)'}
 
-{'❌ UPI ID: NOT YET OBTAINED - ASK NOW!' if not has_upi else '✓ UPI ID: Already have it'}
-{'❌ EMAIL: NOT YET OBTAINED - ASK NOW!' if not has_email else '✓ Email: Already have it'}
+✅ REQUIRED RESPONSES (pick ONE that asks for something you DON'T have yet):
+{f'1. "ok wait... but whats your UPI id? i can pay faster that way"' if not has_upi else ''}
+{f'2. "alright... send me official email proof first"' if not has_email else ''}  
+{f'3. "fine but whats your employee ID for records?"' if not has_employee_id else ''}
+{f'4. "ok but send me the website link to verify"' if not already_revealed.get('links') else ''}
+5. "i understand... let me try the payment now"
+6. "ok trying... wait my phone is slow"
 
-✅ BEST RESPONSES (pick ONE strategy and use it):
-1. "ok ok i understand... but first what's your employee ID for my records?"
-2. "wait before i do anything... send me your official email id for confirmation"
-3. "fine but what's your UPI id? i can pay verification fee that way"
-4. "ok but can you send me the official website link? i want to check first"
-5. "i will help but what's your direct phone number i should call?"
-6. "understood but send me email confirmation from official bank id first"
+🎯 CRITICAL RULE: Look at intelligence status above. If something has ✅, you CANNOT ask for it again!
+If your last message asked for X, this message MUST ask for Y (something different)!
 
-🚫 ABSOLUTELY DO NOT SAY: "which code", "which OTP", "don't have OTP", "which account"
-✅ MUST SAY: Ask for NEW intel (employee ID, email, UPI, link, phone number)
-
-Remember: BREAK THE LOOP! Ask for something DIFFERENT. Progress the conversation!
 ========================================================================================
 """
             else:
