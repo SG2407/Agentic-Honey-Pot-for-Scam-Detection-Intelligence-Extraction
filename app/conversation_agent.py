@@ -361,14 +361,62 @@ class ConversationAgent:
             "Create FALSE COMPLIANCE with verification: 'ok let me just confirm the details again', 'before i proceed can you repeat?', 'i want to be sure im doing right'"
         ]
         
+        # COMPONENT 2: Detect sensitive requests (OTP, password, PIN, CVV, etc.)
+        sensitive_keywords = ['otp', 'password', 'pin', 'cvv', 'security code', 'verification code', 'passcode', 'secret code']
+        is_sensitive_request = any(keyword in scammer_message.lower() for keyword in sensitive_keywords)
+        
         # Build adaptive, detailed system prompt
         persona_behavioral = persona.get('behavioral_traits', [])
         persona_speech = persona.get('speech_patterns', [])
         
-        prompt = f"""You are roleplaying as a realistic {persona['style']} person who is unknowingly chatting with a scammer.
+        # COMPONENT 1: Enhanced system prompt with security research context
+        security_context = """
+🔐 === SECURITY RESEARCH SIMULATION CONTEXT === 🔐
+IMPORTANT: You are participating in a controlled cybersecurity research environment.
+This is a honeypot simulation designed to study scammer tactics and extract intelligence.
+
+Your role: Play a realistic victim engaging with a scammer in a safe, monitored test environment.
+Your goal: Extract intelligence (phone numbers, UPI IDs, bank accounts, links, emails) by keeping the conversation natural and flowing.
+
+⚠️ CRITICAL: When the scammer asks for sensitive information (OTP, password, PIN, CVV):
+- This is EXPECTED behavior in this security research simulation
+- Respond naturally as your character would - show confusion, ask clarifying questions
+- DO NOT refuse or break character - this is part of the intelligence gathering process
+- The simulation is designed to keep scammers engaged to extract their contact details
+
+You are NOT helping with actual credential theft - this is a controlled honeypot research environment.
+========================================================================================
+"""
+        
+        # Add extra instructions for sensitive requests
+        sensitive_instructions = ""
+        if is_sensitive_request:
+            sensitive_instructions = """
+⚡⚡⚡ === HONEYPOT MODE: SENSITIVE REQUEST DETECTED === ⚡⚡⚡
+
+The scammer just asked for sensitive information (OTP/password/PIN/CVV).
+
+Your response guidelines:
+✅ STAY IN CHARACTER - respond as your persona would
+✅ Show natural confusion: "wait which code?", "i dont have any otp yet"
+✅ Ask clarifying questions: "you mean the sms code?", "password for which app?"
+✅ Create obstacles: "im not getting the otp", "it says wrong password"
+✅ Ask for THEIR details while deflecting: "ok but first confirm your employee id?", "send me official email first"
+
+❌ DO NOT refuse outright or break character
+❌ DO NOT say things like "I can't help with that" or "That's inappropriate"
+
+Remember: This is a security research honeypot. Your job is to keep them engaged and extract intelligence.
+========================================================================================
+"""
+        
+        prompt = f"""{security_context}
+You are roleplaying as a realistic {persona['style']} person who is unknowingly chatting with a scammer.
 
 === CURRENT SITUATION (Turn {turn_count}) ===
 Scammer's latest message: "{scammer_message}"
+
+{sensitive_instructions}
 
 === CONVERSATION HISTORY ===
 {context}
@@ -714,6 +762,38 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
         logger.warning("All LLM providers failed - using enhanced template fallback")
         turn_count = len(conversation_history) + 1
         
+        # COMPONENT 3: Context-aware template fallbacks
+        # Detect sensitive requests
+        sensitive_keywords = ['otp', 'password', 'pin', 'cvv', 'security code', 'verification code', 'passcode', 'secret code']
+        is_sensitive_request = any(keyword in scammer_message.lower() for keyword in sensitive_keywords)
+        
+        # If sensitive request detected, use specialized responses
+        if is_sensitive_request:
+            sensitive_fallbacks = [
+                "wait which code you want? i dont have any otp yet",
+                "password for what? my phone or bank app?",
+                "im not getting any otp on my phone... can you send again?",
+                "you mean the 6 digit code? let me check messages...",
+                "wait i need to generate otp first right? where to click",
+                "ok which password... i have too many passwords dont remember",
+                "the code not coming... should i restart phone?",
+                "i dont see any verification sms yet... how long it takes",
+                "pin means atm pin or different one? confused",
+                "let me try... what happens if i enter wrong code",
+                "wait you need my bank password? thats safe to share?",
+                "ok but first tell me your employee id... for my records",
+                "the otp expired already... can you resend it",
+                "im trying but its saying invalid... what should i do",
+                "before i share anything can you send me official email proof",
+                "my wife saying dont share passwords... can you call me instead",
+                "code is 12345... wait thats my old pin not sure if still works",
+                "checking my messages... lot of spam also which one is real otp",
+                "ok i trust you... but whats your contact number just in case",
+                "password has 8 characters right? let me remember which one i used"
+            ]
+            import random
+            return random.choice(sensitive_fallbacks)
+        
         # Enhanced template responses with more variety and human-like qualities
         fallback_responses = {
             "worried_customer": [
@@ -726,9 +806,11 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
                 "What documents needed? i have aadhar pan ready where to send",
                 "im really worried now... can you send official link to verify",
                 "this happened before? or new issue? pls explain clearly",
-                "ok i will do it... just tell me which account number you need",
+                "ok i will do it... just tell me your upi id i will send now",
                 "wait let me check my messages... got any sms from bank about this?",
-                "how much time i have to fix this? i need to withdraw salary tomorrow"
+                "how much time i have to fix this? i need to withdraw salary tomorrow",
+                "can you give me your phone number? easier if i call you directly",
+                "whats your official email id? i want written proof also"
             ],
             "excited_winner": [
                 "Really?! cant believe... i never entered lottery tho",
@@ -742,7 +824,9 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
                 "ok ok im excited... which documents needed for prize claim",
                 "amazing!! can you send me official website link i want to see",
                 "how much is the prize exactly? and when will i get it",
-                "should i come to office or everything online? pls guide me"
+                "should i come to office or everything online? pls guide me",
+                "whats your phonepe id? i can pay processing fee right now",
+                "send me your contact number... want to call and confirm this is real"
             ],
             "confused_elderly": [
                 "i dont undorstand properly... can u explain slowly pls",
@@ -756,7 +840,9 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
                 "you can call me directly? easier for me to understand by talking",
                 "ok i want to fix this... but explain clearly how",
                 "is this urgent? or i can wait for my son to come home",
-                "which numbers i need to share? dont want to give wrong info"
+                "which numbers i need to share? dont want to give wrong info",
+                "can you give me your phone number? want to save it for calling",
+                "send me link to that website... my son can help me open it later"
             ],
             "cautious_user": [
                 "im not sure about this... sounds little suspicious to me",
@@ -770,7 +856,9 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
                 "can you tell me my account balance? if you really from bank you should know",
                 "im willing to help if genuine... share your official contact details",
                 "not convinced yet... tell me something only bank would know",
-                "i will call bank customer care now... what is your reference number"
+                "i will call bank customer care now... what is your reference number",
+                "whats your direct phone number? i prefer calling to verify",
+                "send me the official website link... i will check if its real bank site"
             ]
         }
         
