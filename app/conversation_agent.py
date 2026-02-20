@@ -2,6 +2,7 @@
 
 import os
 import re
+from datetime import datetime, timezone
 from typing import List
 from app.models import Message
 from app.llm_provider import LLMManager  # PRIORITY 2: Abstract LLM provider
@@ -500,6 +501,9 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
 
         # PRIORITY 2: Use LLM manager with automatic fallback
         # Use higher temperature for more variability and human-like responses
+        reply_start = datetime.now(timezone.utc)
+        logger.info(f"💬 [REPLY] Starting LLM reply generation (persona: {persona_key})...")
+        
         llm_reply = self.llm_manager.generate(
             prompt=prompt,
             model=None,  # Let provider choose model
@@ -508,7 +512,8 @@ Generate ONLY your natural, realistic chat reply (no labels, no quotes, no expla
         )
         
         if llm_reply:
-            logger.info(f"🤖 Agent reply ({persona_key}): {llm_reply}")
+            reply_time = (datetime.now(timezone.utc) - reply_start).total_seconds()
+            logger.info(f"✅ [REPLY] LLM reply generated in {reply_time:.3f}s ({len(llm_reply)} chars, persona: {persona_key})")
             return llm_reply
         
         # Fallback to templates if all LLM providers fail

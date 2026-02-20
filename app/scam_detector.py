@@ -2,6 +2,7 @@
 
 import os
 import re
+from datetime import datetime, timezone
 from app.models import ScamDetectionResult
 from app.llm_provider import LLMManager  # PRIORITY 2: Abstract LLM provider
 import logging
@@ -203,22 +204,34 @@ REASONING: Brief explanation"""
         2. LLM detection (Groq)
         3. Pattern-based fallback
         """
+        # Start timing
+        detection_start = datetime.now(timezone.utc)
+        
         # Build conversation context
         conversation_context = " ".join([msg.text for msg in conversation_history]) if conversation_history else ""
         full_text = f"{conversation_context} {message_text}"
         
-        logger.info(f"Analyzing message: {message_text[:100]}...")
+        logger.info(f"🔍 [DETECTION] Starting scam detection for: {message_text[:80]}...")
         
         # STEP 1: Check hard patterns FIRST
         hard_result = self._check_hard_patterns(full_text)
         if hard_result:
+            detection_time = (datetime.now(timezone.utc) - detection_start).total_seconds()
+            logger.info(f"⚡ [DETECTION] Hard pattern match in {detection_time:.3f}s")
             return hard_result
         
         # STEP 2: Try LLM detection
+        llm_start = datetime.now(timezone.utc)
         llm_result = self._detect_with_llm(message_text, conversation_context)
         if llm_result:
+            llm_time = (datetime.now(timezone.utc) - llm_start).total_seconds()
+            detection_time = (datetime.now(timezone.utc) - detection_start).total_seconds()
+            logger.info(f"🤖 [DETECTION] LLM detection completed: {llm_time:.3f}s (total: {detection_time:.3f}s)")
             return llm_result
         
         # STEP 3: Fallback to pattern-based
         logger.warning("LLM failed, using pattern-based fallback")
-        return self._pattern_based_detection(full_text)
+        pattern_result = self._pattern_based_detection(full_text)
+        detection_time = (datetime.now(timezone.utc) - detection_start).total_seconds()
+        logger.info(f"⚡ [DETECTION] Pattern fallback completed in {detection_time:.3f}s")
+        return pattern_result
